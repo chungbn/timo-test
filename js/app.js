@@ -35,11 +35,19 @@
     const t = topicById(q.topic);
     currentQ = q;
     return `<div class="qcard" style="--c:${t.color}">
-      <div class="q-top"><span class="q-label">${label}</span><span class="tag">${t.icon} ${t.name} · ${'★'.repeat(q.lv)}</span><button type="button" class="icon-btn" data-act="tts" title="Đọc đề">🔊</button></div>
+      <div class="q-top"><span class="q-label">${label}</span><span class="tag">${t.icon} ${t.name} · ${T.levelName(q.lv)}</span><button type="button" class="icon-btn" data-act="tts" title="Đọc đề">🔊</button></div>
       <div class="q-text">${q.text}</div>
       ${q.visual ? `<div class="q-visual">${q.visual}</div>` : ''}
       ${answerArea(q, val, locked)}
     </div>`;
+  }
+
+  const topicStars = id => T.lessons(id).reduce((a, L) => a + Store.stars(T.lessonKey(id, L.n)), 0);
+  // Bài nên học tiếp: bài đầu tiên chưa có sao
+  const nextLesson = id => (T.lessons(id).find(L => !Store.stars(T.lessonKey(id, L.n))) || {}).n;
+  function lessonLevel(L) {
+    const a = Math.min(...L.levels), b = Math.max(...L.levels);
+    return a === b ? T.levelName(a) : `${T.levelName(a)} → ${T.levelName(b)}`;
   }
 
   function starsHtml(n, max = 3) { return `<span class="stars">${'★'.repeat(n)}<span class="off">${'★'.repeat(max - n)}</span></span>`; }
@@ -106,10 +114,10 @@
     <h2 class="sec-title">📚 Học theo chủ đề</h2>
     <div class="grid topics">
       ${TOPICS.map(t => {
-        const st = [1, 2, 3].reduce((a, lv) => a + Store.stars(`${t.id}-${lv}`), 0);
+        const st = topicStars(t.id), max = T.LESSON_COUNT * 3;
         return `<a class="card topic" href="#/topic/${t.id}" style="--c:${t.color}">
           <div class="ico">${t.icon}</div><h3>${t.name}</h3><p>${t.desc}</p>
-          <div class="meter"><div style="width:${st / 9 * 100}%"></div></div><small>⭐ ${st}/9 sao</small>
+          <div class="meter"><div style="width:${st / max * 100}%"></div></div><small>⭐ ${st}/${max} sao · ${T.LESSON_COUNT} bài</small>
         </a>`;
       }).join('')}
     </div>
@@ -134,11 +142,19 @@
       <div class="ico big">${t.icon}</div>
       <div><h1>${t.name}</h1><p>${t.desc}</p></div>
     </section>
-    <h2 class="sec-title">🎮 Luyện tập theo cấp độ</h2>
-    <div class="grid levels">
-      ${T.LEVELS.map(L => `<a class="card level" href="#/practice/${t.id}/${L.lv}" style="--c:${t.color}">
-        <h3>${L.name}</h3><p>${L.desc} · 10 câu</p>${starsHtml(Store.stars(`${t.id}-${L.lv}`))}
-      </a>`).join('')}
+    <h2 class="sec-title">🗺️ Lộ trình ${T.LESSON_COUNT} bài · mỗi bài ${T.LESSON_SIZE} câu <small class="muted">⭐ ${topicStars(t.id)}/${T.LESSON_COUNT * 3}</small></h2>
+    <div class="path">
+      ${(() => {
+        const next = nextLesson(t.id);
+        return T.lessons(t.id).map(L => {
+          const st = Store.stars(T.lessonKey(t.id, L.n));
+          return `<a class="lesson ${st ? 'done' : ''} ${L.n === next ? 'next' : ''}" href="#/practice/${t.id}/${L.n}" style="--c:${t.color}">
+            <span class="lesson-n">${L.n}</span>
+            <span class="lesson-body"><b>${L.t}</b><small>${lessonLevel(L)}</small></span>
+            ${L.n === next ? '<span class="lesson-go">Học tiếp →</span>' : starsHtml(st)}
+          </a>`;
+        }).join('');
+      })()}
     </div>
     <div class="theory" style="--c:${t.color}">
       <h2>📖 Kiến thức cần nhớ</h2>
@@ -213,6 +229,7 @@
       if (s.onDone) s.onDone(s);
       if (stars === 3) confetti();
     }
+    const next = s.lesson && s.lesson < T.LESSON_COUNT ? `#/practice/${s.topic}/${s.lesson + 1}` : null;
     const msg = stars === 3 ? 'Tuyệt vời! Con là nhà toán học nhí! 🏆' : stars === 2 ? 'Rất tốt! Cố thêm chút nữa để được 3 sao nhé! 🌟' : stars === 1 ? 'Khá lắm! Xem lại lời giải và thử lần nữa nhé! 💪' : 'Không sao cả! Đọc lại phần kiến thức rồi luyện tiếp nhé! 📖';
     $app.innerHTML = `
     <div class="result-card">
@@ -220,7 +237,8 @@
       <h1>${s.correct}/${n} câu đúng</h1>
       <p>${msg}</p>
       <div class="actions center">
-        ${s.mode === 'mistakes' ? '' : '<button class="btn primary" data-act="restart">🔄 Luyện bộ câu mới</button>'}
+        ${next && stars ? `<a class="btn primary" href="${next}">Bài tiếp theo →</a>` : ''}
+        ${s.mode === 'mistakes' ? '' : `<button class="btn ${next && stars ? '' : 'primary'}" data-act="restart">🔄 Làm lại (câu mới)</button>`}
         <a class="btn" href="${s.back}">← Quay lại</a>
       </div>
     </div>
@@ -500,7 +518,7 @@
     <div class="hero-stats wide">
       <div><b>${done}</b><span>câu đã làm</span></div>
       <div><b>${done ? Math.round(correct / done * 100) : 0}%</b><span>tỉ lệ đúng</span></div>
-      <div><b>${Store.totalStars()}/45</b><span>⭐ sao</span></div>
+      <div><b>${Store.totalStars()}/${TOPICS.length * T.LESSON_COUNT * 3}</b><span>⭐ sao</span></div>
       <div><b>${d.exams.length}</b><span>bài thi</span></div>
       <div><b>${d.speedBest}</b><span>⚡ kỷ lục tính nhẩm</span></div>
       <div><b>${Store.streak()}</b><span>🔥 ngày liên tiếp</span></div>
@@ -510,7 +528,7 @@
       ${TOPICS.map(t => {
         const s = d.stats[t.id] || { done: 0, correct: 0 };
         const pct = s.done ? Math.round(s.correct / s.done * 100) : 0;
-        return `<div class="tb"><span>${t.icon} ${t.name}</span><div class="meter" style="--c:${t.color}"><div style="width:${pct}%"></div></div><b>${pct}%</b><small>${s.correct}/${s.done} câu · ${[1, 2, 3].map(lv => starsHtml(Store.stars(`${t.id}-${lv}`))).join(' ')}</small></div>`;
+        return `<div class="tb"><span>${t.icon} ${t.name}</span><div class="meter" style="--c:${t.color}"><div style="width:${pct}%"></div></div><b>${pct}%</b><small>${s.correct}/${s.done} câu · ⭐ ${topicStars(t.id)}/${T.LESSON_COUNT * 3} sao · xong ${T.lessons(t.id).filter(L => Store.stars(T.lessonKey(t.id, L.n))).length}/${T.LESSON_COUNT} bài</small></div>`;
       }).join('')}
       ${(() => {
         const weak = TOPICS.map(t => ({ t, s: d.stats[t.id] })).filter(x => x.s && x.s.done >= 5).sort((a, b) => a.s.correct / a.s.done - b.s.correct / b.s.done)[0];
@@ -534,9 +552,9 @@
     document.body.dataset.view = a || 'home';
     if (!a) renderHome();
     else if (a === 'topic') renderTopic(b);
-    else if (a === 'practice' && topicById(b) && [1, 2, 3].includes(+c)) {
-      const t = topicById(b), lv = +c;
-      startSession({ title: `${t.icon} ${t.name} · Cấp ${lv}`, back: `#/topic/${b}`, starKey: `${b}-${lv}`, make: () => T.generateSet(b, lv, 10) });
+    else if (a === 'practice' && topicById(b) && +c >= 1 && +c <= T.LESSON_COUNT) {
+      const t = topicById(b), n = +c, L = T.lessons(b)[n - 1];
+      startSession({ title: `${t.icon} Bài ${n}: ${L.t}`, back: `#/topic/${b}`, topic: b, lesson: n, starKey: T.lessonKey(b, n), make: () => T.generateLesson(b, n) });
     } else if (a === 'mixed') {
       startSession({ title: '🎯 Luyện tổng hợp', back: '#/', make: () => mixedQuestions(T.makeRng(), 10) });
     } else if (a === 'daily') {

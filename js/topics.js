@@ -109,10 +109,53 @@
   T.topicById = id => T.TOPICS.find(t => t.id === id);
 
   T.LEVELS = [
-    { lv: 1, name: 'Cấp 1 · Khởi động', desc: 'Làm quen dạng bài' },
-    { lv: 2, name: 'Cấp 2 · Tăng tốc', desc: 'Mức độ đề thi' },
-    { lv: 3, name: 'Cấp 3 · Thử thách', desc: 'Câu khó, lấy huy chương' },
+    { lv: 0, name: 'Làm quen', desc: 'Rất dễ, có hình minh họa' },
+    { lv: 1, name: 'Cấp 1', desc: 'Khởi động' },
+    { lv: 2, name: 'Cấp 2', desc: 'Mức độ đề thi' },
+    { lv: 3, name: 'Cấp 3', desc: 'Câu khó, lấy huy chương' },
   ];
+  T.levelName = lv => T.LEVELS[lv].name;
+
+  // Mỗi chủ đề có 12 bài, mỗi bài 5 câu. Độ khó tăng dần theo RAMP (cấp độ của từng câu trong bài).
+  T.LESSON_SIZE = 5;
+  T.RAMP = [
+    [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 1, 1],
+    [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 2, 2],
+    [1, 2, 2, 2, 2], [2, 2, 2, 2, 3], [2, 2, 3, 3, 3], [3, 3, 3, 3, 3],
+  ];
+  // Tên bài và dạng bài tập trung (f = null: trộn mọi dạng của cấp độ đó)
+  const tail = [
+    { t: 'Ôn tập làm quen', f: null }, { t: 'Bước lên cấp 1', f: null },
+  ];
+  const end = [
+    { t: 'Tổng hợp cấp 1', f: null }, { t: 'Bước lên cấp 2', f: null }, { t: 'Mức đề thi', f: null },
+    { t: 'Thử thách', f: null }, { t: 'Về đích 🏁', f: null },
+  ];
+  const LESSONS = {
+    logic: [
+      { t: 'Tìm quy luật đơn giản', f: ['seq0', 'pattern0', 'odd0'] }, { t: 'So sánh và vị trí', f: ['compare0', 'position0'] }, ...tail,
+      { t: 'Dãy số, dãy hình', f: ['seq', 'pattern'] }, { t: 'Xếp hàng, so sánh', f: ['queue', 'compare'] }, { t: 'Cân đồ vật, tuổi, cưa gỗ', f: ['exchange', 'age', 'cut'] }, ...end,
+    ],
+    arith: [
+      { t: 'Đếm và cộng trừ bằng hình', f: ['count0', 'addpic0', 'subpic0'] }, { t: 'Cộng trừ trong phạm vi 5', f: ['calc0', 'cmp0'] }, ...tail,
+      { t: 'Cộng trừ, tìm số', f: ['calc', 'missing'] }, { t: 'Toán có lời văn, so sánh', f: ['word', 'compare'] }, { t: 'Tính nhanh, con vật bí ẩn', f: ['quick', 'symbols'] }, ...end,
+    ],
+    number: [
+      { t: 'Thứ tự các số', f: ['next0', 'between0', 'biggest0'] }, { t: 'Chẵn lẻ, chục và đơn vị', f: ['evenodd0', 'tens0'] }, ...tail,
+      { t: 'Chục, đơn vị, số liền nhau', f: ['place', 'neighbor', 'special'] }, { t: 'Chẵn lẻ, đếm số', f: ['evenodd', 'count'] }, { t: 'Sắp xếp, lập số', f: ['order', 'fromdigits'] }, ...end,
+    ],
+    geo: [
+      { t: 'Nhận biết hình', f: ['shapename0', 'sides0'] }, { t: 'Đếm hình, xem giờ', f: ['shapes0', 'cells0', 'clock'] }, ...tail,
+      { t: 'Đếm hình, đếm ô vuông', f: ['shapes', 'grid', 'bars'] }, { t: 'Đoạn thẳng, tam giác, hình chữ nhật', f: ['segments', 'fan', 'strip'] }, { t: 'Xem đồng hồ, ghép hình', f: ['clock', 'bars'] }, ...end,
+    ],
+    comb: [
+      { t: 'Có mấy cách chọn?', f: ['pickone0', 'or0'] }, { t: 'Chọn đồ, chia kẹo', f: ['outfit0', 'choose0', 'share0'] }, ...tail,
+      { t: 'Chọn quần áo, tìm đường', f: ['outfit', 'roads'] }, { t: 'Bắt tay, tách số', f: ['handshake', 'split'] }, { t: 'Lập số, lấy bi', f: ['digits', 'pigeon'] }, ...end,
+    ],
+  };
+  T.lessons = topic => LESSONS[topic].map((L, i) => Object.assign({ n: i + 1, levels: T.RAMP[i] }, L));
+  T.LESSON_COUNT = T.RAMP.length;
+  T.lessonKey = (topic, n) => `${topic}-L${n}`;
 
   T.EXAM_MODES = {
     full: { name: 'Thi thử TIMO', short: 'Chuẩn', per: 5, levels: [1, 1, 2, 2, 3], minutes: 90, desc: '25 câu · 90 phút · giống đề thi thật' },

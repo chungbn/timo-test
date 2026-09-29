@@ -665,7 +665,7 @@
         solution: `Đếm tiếp ${k} số trên mặt đồng hồ từ số ${h}${h + k > 12 ? ' (sau số 12 quay lại số 1)' : ''}: <b>${ans}</b>.`,
       });
     }
-    const m = lv === 1 ? 0 : R.pick([0, 30, 30]);
+    const m = lv <= 1 ? 0 : R.pick([0, 30, 30]);
     const lab = (hh, mm) => mm ? `${hh} giờ 30 phút` : `${hh} giờ`;
     const ans = lab(h, m);
     const other = h % 12 + 1, prev = (h + 10) % 12 + 1;
@@ -790,20 +790,246 @@
   }
 
   // =====================================================================
+  // LÀM QUEN (cấp 0): dạng bài rất dễ, nhiều hình minh họa
+  // =====================================================================
+  const SHAPE_NAMES = { tri: 'Hình tam giác', sq: 'Hình vuông', cir: 'Hình tròn', rect: 'Hình chữ nhật' };
+  const SHAPE_SIDES = { tri: 3, sq: 4, rect: 4, cir: 0 };
+
+  function svgOneShape(t) {
+    const body = {
+      tri: `<polygon points="80,12 16,120 144,120" fill="#fde68a" stroke="${INK}" stroke-width="4"/>`,
+      sq: `<rect x="28" y="12" width="104" height="104" fill="#bfdbfe" stroke="${INK}" stroke-width="4"/>`,
+      rect: `<rect x="8" y="30" width="144" height="80" fill="#bbf7d0" stroke="${INK}" stroke-width="4"/>`,
+      cir: `<circle cx="80" cy="66" r="56" fill="#fbcfe8" stroke="${INK}" stroke-width="4"/>`,
+    }[t];
+    return svg(160, 130, body, 150);
+  }
+  const groupsOf5 = (x, n) => range(0, Math.ceil(n / 5) - 1).map(i => x.repeat(Math.min(5, n - 5 * i))).join('&nbsp;&nbsp;');
+
+  function logicSeq0(R) {
+    const kind = R.pick(['up1', 'up1', 'down1', 'up2', 'missing']);
+    if (kind === 'missing') {
+      const a = R.int(0, 5), k = R.int(1, 3), t = range(a, a + 4);
+      return mk({ text: `Điền số còn thiếu vào ô trống:<div class="seq">${t.map((v, i) => i === k ? box : v).join(', ')}</div>`, answer: t[k], solution: `Đếm thêm 1: ${t.join(', ')}. Số còn thiếu là <b>${t[k]}</b>.` });
+    }
+    const s = kind === 'up2' ? 2 : kind === 'down1' ? -1 : 1;
+    const a = kind === 'down1' ? R.int(5, 10) : R.int(0, kind === 'up2' ? 2 : 5);
+    const t = range(0, 3).map(i => a + s * i), ans = a + 4 * s;
+    return mk({
+      text: `Tìm số tiếp theo:<div class="seq">${t.join(', ')}, ?</div>`, answer: ans,
+      solution: s < 0 ? `Đếm lùi, mỗi lần bớt 1: ${t[3]} − 1 = <b>${ans}</b>.` : `Mỗi số hơn số trước ${s}: ${t[3]} + ${s} = <b>${ans}</b>.`,
+    });
+  }
+
+  function logicPattern0(R) {
+    const [A, B, X] = R.sample(SHAPES, 3);
+    const pat = R.pick([[A, B], [A, B], [A, A, B]]), k = pat.length;
+    const L = 2 * k + R.int(0, k - 1), ans = pat[L % k];
+    return mk({
+      type: 'choice', choices: R.shuffle([A, B, X]),
+      text: `Hình tiếp theo là hình nào?<div class="seq emoji">${range(0, L - 1).map(i => pat[i % k]).join(' ')} ?</div>`,
+      answer: ans, solution: `Các hình lặp lại theo nhóm ${pat.join('')}. Hình tiếp theo là <b>${ans}</b>.`,
+    });
+  }
+
+  function logicOdd0(R) {
+    if (R.chance(0.5)) {
+      const [X, Y] = R.sample(R.pick([FRUITS, ANIMALS]), 2);
+      const row = Array(5).fill(X); row[R.int(0, 4)] = Y;
+      return mk({ type: 'choice', choices: R.shuffle([X, Y]), text: `Hình nào khác với các hình còn lại?<div class="seq emoji">${row.join(' ')}</div>`, answer: Y, solution: `Có 4 hình ${X} giống nhau, chỉ có <b>${Y}</b> là khác.` });
+    }
+    const fruitOdd = R.chance(0.5);
+    const main = R.sample(fruitOdd ? ANIMALS : FRUITS, 4), odd = R.pick(fruitOdd ? FRUITS : ANIMALS);
+    const row = R.shuffle(main.concat(odd));
+    return mk({
+      type: 'choice', choices: row,
+      text: `Cái nào không cùng loại với các cái còn lại?<div class="seq emoji">${row.join(' ')}</div>`, answer: odd,
+      solution: `${main.join(' ')} đều là ${fruitOdd ? 'con vật' : 'quả'}. Chỉ có <b>${odd}</b> là ${fruitOdd ? 'quả' : 'con vật'}.`,
+    });
+  }
+
+  function logicCompare0(R) {
+    const [A, B] = R.sample(NAMES, 2);
+    const [more, less] = R.pick([['cao hơn', 'thấp hơn'], ['nặng hơn', 'nhẹ hơn'], ['chạy nhanh hơn', 'chạy chậm hơn'], ['nhiều tuổi hơn', 'ít tuổi hơn']]);
+    const st = R.chance(0.5) ? `${A} ${more} ${B}` : `${B} ${less} ${A}`;
+    const askMore = R.chance(0.5), ans = askMore ? A : B;
+    return mk({
+      type: 'choice', choices: R.shuffle([A, B]),
+      text: `${st}.<br>Hỏi bạn nào ${askMore ? more : less}?`, answer: ans,
+      solution: `${A} ${more} ${B}, nghĩa là ${B} ${less} ${A}. Bạn ${askMore ? more : less} là <b>${ans}</b>.`,
+    });
+  }
+
+  function logicPosition0(R) {
+    const row = R.sample(ANIMALS, 5);
+    const kind = R.pick(['which', 'where', 'middle']);
+    const shown = `<div class="seq emoji">${row.join(' ')}</div>`;
+    if (kind === 'where') {
+      const k = R.int(1, 5);
+      return mk({ text: `Các con vật xếp thành hàng:${shown}Tính từ trái sang, con ${row[k - 1]} đứng thứ mấy?`, answer: k, solution: `Đếm từ trái sang: ${row.slice(0, k).map((x, i) => `${x} thứ ${i + 1}`).join(', ')}. Con ${row[k - 1]} đứng thứ <b>${k}</b>.` });
+    }
+    const k = kind === 'middle' ? 3 : R.int(1, 5), ans = row[k - 1];
+    return mk({
+      type: 'choice', choices: choicesOf(R, ans, row),
+      text: `Các con vật xếp thành hàng:${shown}${kind === 'middle' ? 'Con vật nào đứng ở chính giữa hàng?' : `Tính từ trái sang, con vật đứng thứ ${k} là con nào?`}`,
+      answer: ans, solution: kind === 'middle' ? `Hàng có 5 con, con đứng giữa có 2 con bên trái và 2 con bên phải: <b>${ans}</b>.` : `Đếm từ trái sang đến ${k}: <b>${ans}</b>.`,
+    });
+  }
+
+  function arithCount0(R) {
+    const X = R.pick(FRUITS.concat(ANIMALS)), n = R.int(3, 10);
+    return mk({
+      text: `Có bao nhiêu ${X}?<div class="seq emoji">${groupsOf5(X, n)}</div>`, answer: n,
+      solution: n > 5 ? `Nhóm đầu có 5, nhóm sau có ${n - 5}. Đếm tiếp từ 5: ${range(6, n).join(', ')}. Có <b>${n}</b>.` : `Đếm lần lượt: ${range(1, n).join(', ')}. Có <b>${n}</b>.`,
+    });
+  }
+
+  function arithAddPic0(R) {
+    const X = R.pick(FRUITS), a = R.int(1, 4), b = R.int(1, 7 - a);
+    return mk({
+      text: `Gộp lại thì có tất cả bao nhiêu quả?<div class="seq emoji">${X.repeat(a)} + ${X.repeat(b)} = ?</div>`, answer: a + b,
+      solution: `Có ${a} quả, thêm ${b} quả: ${a} + ${b} = <b>${a + b}</b> quả.`,
+    });
+  }
+
+  function arithSubPic0(R) {
+    const [X, noun, cls, verb] = R.pick([['🐟', 'con cá', 'con', 'Mèo ăn mất'], ['🎈', 'quả bóng bay', 'quả', 'Gió thổi bay mất'], ['🍪', 'cái bánh', 'cái', 'Em ăn mất'], ['🐦', 'con chim', 'con', 'Bay đi mất']]);
+    const a = R.int(3, 7), b = R.int(1, a - 1);
+    return mk({
+      text: `Có ${a} ${noun}:<div class="seq emoji">${X.repeat(a)}</div>${verb} ${b} ${cls}. Hỏi còn lại mấy ${cls}?`, answer: a - b,
+      solution: `${a} bớt đi ${b}: ${a} − ${b} = <b>${a - b}</b> ${cls}.`,
+    });
+  }
+
+  function arithCalc0(R) {
+    if (R.chance(0.5)) { const a = R.int(0, 4), b = R.int(1, 5 - a); return mk({ text: `Tính:<div class="seq">${a} + ${b} = ?</div>`, answer: a + b, solution: `Đếm thêm ${b} từ ${a}: ${range(a + 1, a + b).join(', ')}. Kết quả <b>${a + b}</b>.` }); }
+    const a = R.int(2, 5), b = R.int(1, a);
+    return mk({ text: `Tính:<div class="seq">${a} − ${b} = ?</div>`, answer: a - b, solution: `Đếm lùi ${b} từ ${a}: ${range(a - b, a - 1).reverse().join(', ')}. Kết quả <b>${a - b}</b>.` });
+  }
+
+  function arithCmp0(R) {
+    const a = R.int(0, 10), b = R.chance(0.2) ? a : R.int(0, 10);
+    const ans = a > b ? '>' : a < b ? '<' : '=';
+    return mk({
+      type: 'choice', choices: ['>', '<', '='],
+      text: `Chọn dấu thích hợp điền vào ô trống:<div class="seq">${a} ${box} ${b}</div>`, answer: ans,
+      solution: a === b ? `Hai số bằng nhau nên điền dấu <b>=</b>.` : `${Math.max(a, b)} lớn hơn ${Math.min(a, b)} nên ${a} <b>${T.esc(ans)}</b> ${b}. (Miệng dấu luôn há về phía số lớn hơn.)`,
+    });
+  }
+
+  function ntNext0(R) {
+    const after = R.chance(0.5), a = R.int(after ? 0 : 1, 9), ans = after ? a + 1 : a - 1;
+    return mk({ text: `Số liền ${after ? 'sau' : 'trước'} của ${a} là số nào?`, answer: ans, solution: `Đếm ${after ? 'tiếp' : 'lùi'} 1 từ ${a}: <b>${ans}</b>.` });
+  }
+
+  function ntBetween0(R) {
+    const a = R.int(0, 8);
+    return mk({ text: `Số nào ở giữa ${a} và ${a + 2}?<div class="seq">${a}, ${box}, ${a + 2}</div>`, answer: a + 1, solution: `Đếm: ${a}, ${a + 1}, ${a + 2}. Số ở giữa là <b>${a + 1}</b>.` });
+  }
+
+  function ntBiggest0(R) {
+    const nums = R.sample(range(0, 10), 3), big = R.chance(0.5);
+    const ans = big ? Math.max(...nums) : Math.min(...nums);
+    return mk({
+      type: 'choice', choices: nums.map(String),
+      text: `Số nào ${big ? 'lớn nhất' : 'bé nhất'}?<div class="seq">${nums.join(', ')}</div>`, answer: ans,
+      solution: `Xếp từ bé đến lớn: ${nums.slice().sort((x, y) => x - y).join(', ')}. Số ${big ? 'lớn nhất' : 'bé nhất'} là <b>${ans}</b>.`,
+    });
+  }
+
+  function ntEvenOdd0(R) {
+    const n = R.int(1, 10), ans = n % 2 ? 'Số lẻ' : 'Số chẵn';
+    return mk({
+      type: 'choice', choices: ['Số chẵn', 'Số lẻ'],
+      text: `Số ${n} là số chẵn hay số lẻ?`, answer: ans,
+      solution: `Số chẵn: 0, 2, 4, 6, 8, 10. Số lẻ: 1, 3, 5, 7, 9. Vậy ${n} là <b>${ans.toLowerCase()}</b>.`,
+    });
+  }
+
+  function ntTens0(R) {
+    const d = R.int(0, 9);
+    if (R.chance(0.5)) return mk({ text: `Số ${10 + d} gồm 1 chục và mấy đơn vị?`, answer: d, solution: `${10 + d} = 10 + ${d}, gồm 1 chục và <b>${d}</b> đơn vị.` });
+    return mk({ text: `Số gồm 1 chục và ${d} đơn vị là số nào?`, answer: 10 + d, solution: `1 chục là 10, thêm ${d} đơn vị: 10 + ${d} = <b>${10 + d}</b>.` });
+  }
+
+  function geoShapeName0(R) {
+    const t = R.pick(Object.keys(SHAPE_NAMES)), ans = SHAPE_NAMES[t];
+    const hint = { tri: 'có 3 cạnh', sq: 'có 4 cạnh dài bằng nhau', rect: 'có 4 cạnh, 2 cạnh dài và 2 cạnh ngắn', cir: 'tròn đều, không có cạnh' }[t];
+    return mk({ type: 'choice', choices: R.shuffle(Object.values(SHAPE_NAMES)), text: 'Đây là hình gì?', visual: svgOneShape(t), answer: ans, solution: `Hình này ${hint}, đó là <b>${ans.toLowerCase()}</b>.` });
+  }
+
+  function geoSides0(R) {
+    const t = R.pick(['tri', 'sq', 'rect', 'tri', 'sq', 'cir']), word = t !== 'cir' && R.chance(0.5) ? 'góc' : 'cạnh';
+    return mk({
+      text: `${SHAPE_NAMES[t]} có mấy ${word}?`, visual: svgOneShape(t), answer: SHAPE_SIDES[t],
+      solution: t === 'cir' ? 'Hình tròn không có cạnh nào: <b>0</b>.' : `Đếm các ${word} của hình: có <b>${SHAPE_SIDES[t]}</b> ${word}.`,
+    });
+  }
+
+  function geoShapes0(R) {
+    const [a, b] = R.sample(['tri', 'sq', 'cir'], 2), n = R.int(4, 7);
+    const list = range(1, n).map(() => R.pick([a, b]));
+    if (!list.includes(a)) list[0] = a;
+    const cnt = list.filter(x => x === a).length;
+    return mk({ text: `Có bao nhiêu ${SHAPE_NAMES[a].toLowerCase()}?`, visual: svgShapes(list), answer: cnt, solution: `Chỉ đếm ${SHAPE_NAMES[a].toLowerCase()}: có <b>${cnt}</b> hình.` });
+  }
+
+  function geoCells0(R) {
+    const [r, c] = R.pick([[1, 2], [1, 3], [1, 4], [1, 5], [2, 2], [2, 3]]);
+    return mk({ text: 'Hình bên có bao nhiêu ô vuông nhỏ?', visual: svgGrid(r, c), answer: r * c, solution: r === 1 ? `Đếm từng ô từ trái sang: có <b>${c}</b> ô.` : `Hàng trên ${c} ô, hàng dưới ${c} ô: ${c} + ${c} = <b>${r * c}</b> ô.` });
+  }
+
+  function combPickOne0(R) {
+    const items = R.sample(FRUITS, R.int(2, 5));
+    return mk({ text: `Mẹ có các loại quả:<div class="seq emoji">${items.join(' ')}</div>Con được chọn 1 quả. Có mấy cách chọn?`, answer: items.length, solution: `Mỗi quả là một cách chọn: ${items.join(', ')}. Có <b>${items.length}</b> cách.` });
+  }
+
+  function combOr0(R) {
+    const a = R.int(2, 4), b = R.int(2, 4);
+    return mk({ text: `Trên bàn có ${a} chiếc kẹo 🍬 khác nhau và ${b} chiếc bánh 🍰 khác nhau. Con được lấy 1 món (kẹo hoặc bánh). Có mấy cách lấy?`, answer: a + b, solution: `Lấy kẹo: ${a} cách. Lấy bánh: ${b} cách. Tất cả: ${a} + ${b} = <b>${a + b}</b> cách.` });
+  }
+
+  function combOutfit0(R) {
+    const [a, b] = R.pick([[1, 2], [1, 3], [2, 2], [1, 4]]);
+    const shirts = ['áo đỏ', 'áo xanh'].slice(0, a), pants = ['quần đen', 'quần trắng', 'quần nâu', 'quần xám'].slice(0, b);
+    const list = [];
+    shirts.forEach(s => pants.forEach(p => list.push(`${s} – ${p}`)));
+    return mk({ text: `${R.pick(NAMES)} có ${a === 1 ? '1 cái áo' : `${a} cái áo`} 👕 (${shirts.join(', ')}) và ${b} cái quần 👖 (${pants.join(', ')}). Có mấy cách chọn 1 bộ gồm 1 áo và 1 quần?`, answer: a * b, solution: `Các bộ: ${list.join('; ')}. Có <b>${a * b}</b> cách.` });
+  }
+
+  function combChoose0(R) {
+    const items = R.sample(FRUITS, 3), [x, y, z] = items;
+    return mk({ text: `Có 3 quả:<div class="seq emoji">${items.join(' ')}</div>Con được chọn 2 quả khác nhau. Có mấy cách chọn?`, answer: 3, solution: `Các cách: ${x}${y}, ${x}${z}, ${y}${z}. Có <b>3</b> cách.` });
+  }
+
+  function combShare0(R) {
+    const [A, B] = R.sample(NAMES, 2), n = R.int(3, 6);
+    const list = range(1, n - 1).map(k => `${A} ${k} – ${B} ${n - k}`);
+    return mk({ text: `Chia ${n} cái kẹo cho ${A} và ${B}, bạn nào cũng được ít nhất 1 cái. Có mấy cách chia?`, answer: n - 1, solution: `Các cách: ${list.join('; ')}. Có <b>${n - 1}</b> cách.` });
+  }
+
+  // =====================================================================
   const G = (id, fn, lv) => ({ id, fn, lv });
   const GENS = {
-    logic: [G('seq', logicSeq, [1, 2, 3]), G('pattern', logicPattern, [1, 2, 3]), G('queue', logicQueue, [1, 2, 3]), G('compare', logicCompare, [1, 2, 3]), G('exchange', logicExchange, [1, 2, 3]), G('age', logicAge, [1, 2, 3]), G('cut', logicCut, [1, 2, 3])],
-    arith: [G('calc', arithCalc, [1, 2, 3]), G('missing', arithMissing, [1, 2, 3]), G('quick', arithQuick, [1, 2, 3]), G('word', arithWord, [1, 2, 3]), G('symbols', arithSymbols, [1, 2, 3]), G('compare', arithCompare, [1, 2, 3]), G('count', arithCount, [2, 3])],
-    number: [G('place', ntPlace, [1, 2, 3]), G('evenodd', ntEvenOdd, [1, 2, 3]), G('count', ntCount, [1, 2, 3]), G('special', ntSpecial, [1, 2, 3]), G('digitsum', ntDigitSum, [2, 3]), G('fromdigits', ntFromDigits, [1, 2, 3]), G('write', ntWriteDigits, [2, 3]), G('neighbor', ntNeighbor, [1, 2, 3]), G('order', ntOrder, [1, 2, 3])],
-    geo: [G('segments', geoSegments, [1, 2, 3]), G('fan', geoFan, [1, 2, 3]), G('grid', geoGrid, [1, 2, 3]), G('strip', geoStrip, [1, 2, 3]), G('shapes', geoShapes, [1, 2, 3]), G('clock', geoClock, [1, 2, 3]), G('bars', geoBars, [1, 2, 3]), G('diag', geoSquareDiag, [2, 3])],
-    comb: [G('handshake', combHandshake, [1, 2, 3]), G('outfit', combOutfit, [1, 2, 3]), G('roads', combRoads, [1, 2, 3]), G('digits', combDigits, [1, 2, 3]), G('pigeon', combPigeon, [1, 2, 3]), G('split', combSplit, [1, 2, 3]), G('coins', combCoins, [2, 3])],
+    logic: [G('seq0', logicSeq0, [0]), G('pattern0', logicPattern0, [0]), G('odd0', logicOdd0, [0]), G('compare0', logicCompare0, [0]), G('position0', logicPosition0, [0]),
+      G('seq', logicSeq, [1, 2, 3]), G('pattern', logicPattern, [1, 2, 3]), G('queue', logicQueue, [1, 2, 3]), G('compare', logicCompare, [1, 2, 3]), G('exchange', logicExchange, [1, 2, 3]), G('age', logicAge, [1, 2, 3]), G('cut', logicCut, [1, 2, 3])],
+    arith: [G('count0', arithCount0, [0]), G('addpic0', arithAddPic0, [0]), G('subpic0', arithSubPic0, [0]), G('calc0', arithCalc0, [0]), G('cmp0', arithCmp0, [0]),
+      G('calc', arithCalc, [1, 2, 3]), G('missing', arithMissing, [1, 2, 3]), G('quick', arithQuick, [1, 2, 3]), G('word', arithWord, [1, 2, 3]), G('symbols', arithSymbols, [1, 2, 3]), G('compare', arithCompare, [1, 2, 3]), G('count', arithCount, [2, 3])],
+    number: [G('next0', ntNext0, [0]), G('between0', ntBetween0, [0]), G('biggest0', ntBiggest0, [0]), G('evenodd0', ntEvenOdd0, [0]), G('tens0', ntTens0, [0]),
+      G('place', ntPlace, [1, 2, 3]), G('evenodd', ntEvenOdd, [1, 2, 3]), G('count', ntCount, [1, 2, 3]), G('special', ntSpecial, [1, 2, 3]), G('digitsum', ntDigitSum, [2, 3]), G('fromdigits', ntFromDigits, [1, 2, 3]), G('write', ntWriteDigits, [2, 3]), G('neighbor', ntNeighbor, [1, 2, 3]), G('order', ntOrder, [1, 2, 3])],
+    geo: [G('shapename0', geoShapeName0, [0]), G('sides0', geoSides0, [0]), G('shapes0', geoShapes0, [0]), G('cells0', geoCells0, [0]),
+      G('segments', geoSegments, [1, 2, 3]), G('fan', geoFan, [1, 2, 3]), G('grid', geoGrid, [1, 2, 3]), G('strip', geoStrip, [1, 2, 3]), G('shapes', geoShapes, [1, 2, 3]), G('clock', geoClock, [0, 1, 2, 3]), G('bars', geoBars, [1, 2, 3]), G('diag', geoSquareDiag, [2, 3])],
+    comb: [G('pickone0', combPickOne0, [0]), G('or0', combOr0, [0]), G('outfit0', combOutfit0, [0]), G('choose0', combChoose0, [0]), G('share0', combShare0, [0]),
+      G('handshake', combHandshake, [1, 2, 3]), G('outfit', combOutfit, [1, 2, 3]), G('roads', combRoads, [1, 2, 3]), G('digits', combDigits, [1, 2, 3]), G('pigeon', combPigeon, [1, 2, 3]), G('split', combSplit, [1, 2, 3]), G('coins', combCoins, [2, 3])],
   };
   T.GENS = GENS;
 
   // Sinh 1 câu hỏi; `used` giúp một bộ đề không lặp dạng bài / nội dung.
-  T.generate = function (topic, lv, R, used) {
+  // `forms` (tùy chọn): chỉ lấy các dạng bài có id trong danh sách (dùng cho từng bài học).
+  T.generate = function (topic, lv, R, used, forms) {
     used = used || { gens: new Set(), texts: new Set() };
-    const list = GENS[topic].filter(g => g.lv.includes(lv));
+    let list = GENS[topic].filter(g => g.lv.includes(lv));
+    if (forms) { const f = list.filter(g => forms.includes(g.id)); if (f.length) list = f; }
     let pool = list.filter(g => !used.gens.has(g.id));
     if (!pool.length) { used.gens.clear(); pool = list; }
     let q, g;
@@ -821,5 +1047,16 @@
     R = R || T.makeRng();
     const used = { gens: new Set(), texts: new Set() };
     return range(1, n).map(() => T.generate(topic, lv, R, used));
+  };
+})(window.T);
+
+(function (T) {
+  'use strict';
+  // Sinh 5 câu cho bài học số n của một chủ đề; câu dễ trước, khó sau.
+  T.generateLesson = function (topic, n, R) {
+    R = R || T.makeRng();
+    const L = T.lessons(topic)[n - 1];
+    const used = { gens: new Set(), texts: new Set() };
+    return L.levels.map(lv => T.generate(topic, lv, R, used, L.f));
   };
 })(window.T);

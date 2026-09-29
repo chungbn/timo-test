@@ -17,7 +17,7 @@
     },
     setStars(key, n) { if (n > (data.stars[key] || 0)) { data.stars[key] = n; save(); } },
     stars(key) { return data.stars[key] || 0; },
-    totalStars() { return Object.values(data.stars).reduce((a, b) => a + b, 0); },
+    totalStars() { return Object.entries(data.stars).filter(([k]) => /-L\d+$/.test(k)).reduce((a, [, v]) => a + v, 0); },
     addExam(rec) {
       data.exams.unshift(rec);
       data.exams = data.exams.slice(0, 50);
