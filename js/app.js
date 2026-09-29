@@ -57,17 +57,49 @@
     if (i && window.matchMedia('(pointer:fine)').matches) i.focus();
   }
 
-  function speak(q) {
-    if (!q || !window.speechSynthesis) return;
+  // Đọc to bằng giọng tiếng Việt, chậm để các bé kịp nghe. Bấm lại cùng nút thì dừng đọc.
+  const SPEECH_RATE = 0.7;
+  let speakingKey = null;
+  const EMOJI_WORDS = {
+    '🍎': 'quả táo', '🍊': 'quả cam', '🍌': 'quả chuối', '🍐': 'quả lê', '🍇': 'chùm nho', '🍓': 'quả dâu', '🍑': 'quả đào', '🍍': 'quả dứa', '🍉': 'quả dưa hấu', '🥥': 'quả dừa',
+    '🐱': 'con mèo', '🐶': 'con chó', '🐰': 'con thỏ', '🐻': 'con gấu', '🐼': 'con gấu trúc', '🦊': 'con cáo', '🐸': 'con ếch', '🐯': 'con hổ', '🐵': 'con khỉ', '🐷': 'con lợn',
+    '🔴': 'tròn đỏ', '🔵': 'tròn xanh', '🟡': 'tròn vàng', '🟢': 'tròn xanh lá', '🟣': 'tròn tím', '⭐': 'ngôi sao', '❤️': 'trái tim', '🔺': 'tam giác đỏ', '🌙': 'mặt trăng', '🍀': 'cỏ bốn lá',
+    '🐟': 'con cá', '🎈': 'quả bóng', '🍪': 'cái bánh', '🐦': 'con chim', '🍬': 'kẹo', '🍰': 'bánh', '👕': '', '👖': '', '🏠': '', '🌳': '', '🏫': '',
+  };
+  const EMOJI_ALT = Object.keys(EMOJI_WORDS).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const EMOJI_RE = new RegExp(EMOJI_ALT, 'g');
+  const EMOJI_RUN_RE = new RegExp(`(${EMOJI_ALT})(?:\\s*\\1)+`, 'g'); // 🍎🍎🍎 → "3 quả táo"
+  function toSpeech(html) {
+    return T.stripHtml(String(html).replace(/<\/?(br|div|p|li)[^>]*>/gi, '. ').replace(/&nbsp;/g, ' '))
+      .replace(EMOJI_RUN_RE, (m, e) => ` ${m.split(e).length - 1} ${EMOJI_WORDS[e] || ''}, `)
+      .replace(EMOJI_RE, m => EMOJI_WORDS[m] ? ` ${EMOJI_WORDS[m]}, ` : ' ')
+      .replace(/□/g, ' ô trống ').replace(/−/g, ' trừ ').replace(/\+/g, ' cộng ').replace(/=/g, ' bằng ')
+      .replace(/×/g, ' nhân ').replace(/→/g, ', ').replace(/\s*<\s*/g, ' bé hơn ').replace(/\s*>\s*/g, ' lớn hơn ')
+      .replace(/💡|Lời giải:/g, '').replace(/\s+/g, ' ').replace(/,\s*([.?:,])/g, '$1').replace(/:\s*\./g, ':')
+      .replace(/(\.\s*){2,}/g, '. ').replace(/([?!])\s*\./g, '$1').replace(/,\s*$/, '').trim();
+  }
+  function speakText(txt, key) {
+    if (!window.speechSynthesis) return;
+    const again = speechSynthesis.speaking && speakingKey === key;
     speechSynthesis.cancel();
-    let txt = T.stripHtml(q.text).replace(/□/g, ' ô trống ').replace(/−/g, ' trừ ').replace(/\+/g, ' cộng ').replace(/=/g, ' bằng ');
-    if (q.type === 'choice' && !/[<>=]/.test(q.answer)) txt += '. Các lựa chọn: ' + q.choices.join(', ');
+    speakingKey = null;
+    if (again || !txt) return;
     const u = new SpeechSynthesisUtterance(txt);
-    u.lang = 'vi-VN'; u.rate = 0.9;
+    u.lang = 'vi-VN'; u.rate = SPEECH_RATE;
     const v = speechSynthesis.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith('vi'));
     if (v) u.voice = v;
+    u.onend = () => { if (speakingKey === key) speakingKey = null; };
+    speakingKey = key;
     speechSynthesis.speak(u);
   }
+  function speak(q) {
+    if (!q) return;
+    // Bài đếm hình: không đọc số lượng (sẽ lộ đáp án), chỉ nhắc bé đếm trên hình
+    let src = q.gen === 'count0' ? q.text.split('<div')[0] + '. Con hãy đếm trên hình nhé.' : q.text;
+    if (q.type === 'choice' && !/[<>=]/.test(q.answer)) src += '. Các lựa chọn: ' + q.choices.join(', ');
+    speakText(toSpeech(src), 'q:' + q.text);
+  }
+  const sayBtn = '<button type="button" class="say" data-act="tts-sol" title="Đọc lời giải">🔊</button>';
 
   function confetti() {
     const colors = ['#f97316', '#8b5cf6', '#0ea5e9', '#10b981', '#ec4899', '#facc15'];
@@ -162,7 +194,7 @@
       <h2>💡 Mẹo làm bài</h2>
       <ul>${t.tips.map(p => `<li>${p}</li>`).join('')}</ul>
       <h2>✏️ Ví dụ mẫu</h2>
-      ${t.examples.map((e, i) => `<details class="example"><summary><b>Ví dụ ${i + 1}.</b> ${e.q}</summary><div class="solution">💡 ${e.a}</div></details>`).join('')}
+      ${t.examples.map((e, i) => `<details class="example"><summary><b>Ví dụ ${i + 1}.</b> ${e.q}</summary><div class="solution">${sayBtn}💡 ${e.a}</div></details>`).join('')}
     </div>`;
   }
 
@@ -212,7 +244,7 @@
     });
     $app.querySelector('#fb').innerHTML = `
       <div class="fb ${ok ? 'ok' : 'bad'}">${ok ? PRAISE[Math.floor(Math.random() * PRAISE.length)] : `😅 Chưa đúng rồi! Đáp án đúng là <b>${esc(q.answer)}</b>`}</div>
-      <div class="solution"><b>💡 Lời giải:</b> ${q.solution}</div>`;
+      <div class="solution">${sayBtn}<b>💡 Lời giải:</b> ${q.solution}</div>`;
     $app.querySelector('#score').textContent = `✅ ${s.correct}/${s.idx + 1}`;
     const btn = $app.querySelector('#primary');
     btn.dataset.act = 'next';
@@ -254,7 +286,7 @@
           <div class="q-text">${it.q.text}</div>
           ${it.q.visual ? `<div class="q-visual">${it.q.visual}</div>` : ''}
           <p>Con trả lời: <b>${it.v ? esc(it.v) : '<i>(bỏ trống)</i>'}</b> · Đáp án: <b>${esc(it.q.answer)}</b></p>
-          <div class="solution">💡 ${it.q.solution}</div>
+          <div class="solution">${sayBtn}💡 ${it.q.solution}</div>
         </div>
       </details>`).join('')}</div>`;
   }
@@ -596,6 +628,12 @@
     const act = el.dataset.act;
     switch (act) {
       case 'tts': speak(currentQ); break;
+      case 'tts-sol': {
+        const box = el.closest('.solution').cloneNode(true);
+        box.querySelectorAll('button').forEach(b => b.remove());
+        speakText('Lời giải. ' + toSpeech(box.innerHTML), 'sol:' + box.innerHTML);
+        break;
+      }
       case 'kp': {
         const input = el.closest('.answer-area').querySelector('.ans');
         if (!input || input.disabled) break;
