@@ -18,3 +18,10 @@ Hoặc chạy server tĩnh: `python3 -m http.server 8000` rồi vào http://loca
 - `js/app.js`: giao diện và điều hướng. `js/storage.js`: lưu tiến độ vào `localStorage`.
 
 Thêm dạng bài mới: viết hàm `(R, lv) => mk({ text, answer, solution, ... })` trong `generators.js` rồi đăng ký vào `GENS`.
+
+## Ngân hàng bài tập (JSON)
+`data/questions.json` chứa toàn bộ ngân hàng bài tập và 90 đề thi cố định (trùng khớp với đề trên web):
+- `questions`: mỗi câu gồm `id`, `topic`, `level`, `form` (dạng bài), `type` (`input`/`choice`), `text`, `visual` (SVG), `choices`, `answer`, `solution`.
+- `exams`: mỗi đề gồm `id` (vd. `full-3`), `mode`, `minutes`, `questionIds`.
+
+Sinh lại sau khi sửa `generators.js`: `node scripts/export-questions.js [số câu mỗi dạng/cấp, mặc định 30]`.
