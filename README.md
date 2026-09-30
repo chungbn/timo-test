@@ -1,6 +1,6 @@
 # Ôn thi TIMO lớp 1
 
-Web học và thi thử Toán TIMO lớp 1. Không cần cài đặt: mở `index.html` bằng trình duyệt.
+Web học và thi thử Toán TIMO lớp 1: https://timo-test-268b2.web.app (Firebase Hosting). Không cần cài đặt: mở `index.html` bằng trình duyệt.
 Hoặc chạy server tĩnh: `python3 -m http.server 8000` rồi vào http://localhost:8000.
 
 ## Tính năng
@@ -55,3 +55,11 @@ Dữ liệu trên Firestore:
 **Khu vực phụ huynh** (trang Tài khoản) được khóa bằng mã PIN 4 số: báo cáo học tập, thêm/sửa/xóa hồ sơ, **xóa dữ liệu học tập** của từng bé, đổi PIN, đăng xuất. Bé chỉ chọn được hồ sơ để học. PIN được tạo ngay sau khi phụ huynh đăng nhập; quên PIN thì xác nhận lại mật khẩu hoặc tài khoản Google để đặt PIN mới. PIN lưu dạng băm SHA-256 trong `users/{uid}.pinHash`; sai 5 lần sẽ tạm khóa 30 giây; khu vực tự khóa sau 10 phút hoặc khi bé chọn hồ sơ.
 
 Không lưu họ tên, ngày sinh hay thông tin cá nhân của trẻ. Tiến độ được gửi lên khi hết bài, nộp bài thi, đổi hồ sơ hoặc đóng trang (câu trả lời lẻ được gộp sau 20 giây), nên nằm thoải mái trong hạn mức miễn phí.
+
+## Triển khai lên Firebase Hosting
+
+```
+firebase deploy --only hosting --project timo-test-268b2 --account chungtb21@gmail.com
+```
+
+Cấu hình trong `firebase.json`: chỉ đưa lên các file của web (bỏ `.git`, `scripts`, README...), HTML/JS/CSS gửi kèm `Cache-Control: no-cache` để trình duyệt luôn lấy bản mới. Có thể đưa luôn quy tắc Firestore bằng `--only hosting,firestore:rules`.
