@@ -160,6 +160,7 @@
       <a class="card mode" href="#/mixed" style="--c:#f59e0b"><div class="ico">🎯</div><h3>Luyện tổng hợp</h3><p>10 câu trộn ngẫu nhiên từ 5 chủ đề</p></a>
       <a class="card mode" href="#/speed" style="--c:#ef4444"><div class="ico">⚡</div><h3>Tính nhẩm 60 giây</h3><p>Làm được nhiều phép tính nhất có thể. Kỷ lục: ${d.speedBest}</p></a>
       <a class="card mode" href="#/mistakes" style="--c:#64748b"><div class="ico">📒</div><h3>Sổ tay lỗi sai</h3><p>${d.mistakes.length} câu cần ôn lại</p></a>
+      <a class="card mode" href="#/rank" style="--c:#eab308"><div class="ico">🏆</div><h3>Bảng xếp hạng</h3><p>Sao, số câu theo tuần, tháng; kỷ lục ngày học, điểm thi</p></a>
       <a class="card mode" href="#/progress" style="--c:#14b8a6"><div class="ico">📊</div><h3>Tiến độ học tập</h3><p>Thống kê theo chủ đề, lịch sử bài thi</p></a>
     </div>`;
   }
@@ -554,6 +555,7 @@
       <div><b>${d.exams.length}</b><span>bài thi</span></div>
       <div><b>${d.speedBest}</b><span>⚡ kỷ lục tính nhẩm</span></div>
       <div><b>${Store.streak()}</b><span>🔥 ngày liên tiếp</span></div>
+      <div><b>${Store.bestStreakOf(d)}</b><span>🏅 kỷ lục ngày liên tiếp</span></div>
     </div>
     <h2 class="sec-title">Theo chủ đề</h2>
     <div class="topic-bars card flat">
@@ -756,13 +758,14 @@
         return `<div class="card flat rep" style="--c:#14b8a6">
           <div class="rep-head"><span class="kid-av sm">${esc(k.avatar || '🙂')}</span><b>${esc(k.nickname)}</b>
             <button class="btn small" data-act="ac-edit" data-id="${k.id}">✏️ Sửa hồ sơ</button>
+            <button class="btn small ${k.onLeaderboard === false ? '' : 'lb-on'}" data-act="ac-lb" data-id="${k.id}" ${dis} title="Hiện hoặc ẩn bé trên bảng xếp hạng">🏆 ${k.onLeaderboard === false ? 'Đang ẩn' : 'Đang hiện'} trên bảng xếp hạng</button>
             <button class="btn small danger" data-act="ac-reset" data-id="${k.id}" ${dis}>🗑 Xóa dữ liệu học tập</button></div>
           <div class="rep-grid">
             <div><b>${s.stars}</b><span>⭐ sao / ${TOPICS.length * T.LESSON_COUNT * 3}</span></div>
             <div><b>${s.done}</b><span>câu đã làm</span></div>
             <div><b>${s.pct}%</b><span>tỉ lệ đúng</span></div>
             <div><b>${s.exams}</b><span>bài thi${s.bestExam != null ? ` · cao nhất ${s.bestExam}đ` : ''}</span></div>
-            <div><b>${s.streak}</b><span>🔥 ngày liên tiếp</span></div>
+            <div><b>${s.streak}</b><span>🔥 ngày liên tiếp · kỷ lục ${s.bestStreak}</span></div>
           </div>
           <p class="small">${s.weak ? `💡 Nên luyện thêm: <b>${s.weak.icon} ${s.weak.name}</b>. ` : ''}${s.lastExam ? `Bài thi gần nhất: ${esc(s.lastExam.title)} – <b>${s.lastExam.score} điểm</b>. ` : ''}${s.updatedAt ? `<span class="muted">Cập nhật ${s.updatedAt.toLocaleString('vi-VN')}</span>` : ''}</p>
         </div>`;
@@ -796,7 +799,7 @@
   }
 
   // Thao tác chỉ dành cho phụ huynh (cần mở khóa bằng PIN)
-  const PARENT_ACTS = ['ac-new', 'ac-edit', 'ac-del', 'ac-reset', 'ac-logout', 'ac-pin-change'];
+  const PARENT_ACTS = ['ac-new', 'ac-edit', 'ac-del', 'ac-reset', 'ac-logout', 'ac-pin-change', 'ac-lb'];
 
   function acctAction(act, el) {
     const val = id => (document.getElementById(id) || {}).value || '';
@@ -860,6 +863,13 @@
         }, f.id ? 'Đã lưu hồ sơ.' : `Đã tạo hồ sơ cho ${nickname}. Bé có thể bắt đầu học!`);
         break;
       }
+      case 'ac-lb': {
+        const kid = Cloud.kids.find(k => k.id === el.dataset.id);
+        if (!kid) break;
+        const on = kid.onLeaderboard === false;
+        acctRun(() => Cloud.setLeaderboard(kid.id, on), on ? `${kid.nickname} đã hiện trên bảng xếp hạng.` : `Đã ẩn ${kid.nickname} khỏi bảng xếp hạng.`);
+        break;
+      }
       case 'ac-reset': {
         const kid = Cloud.kids.find(k => k.id === el.dataset.id);
         if (!kid || !confirm(`Xóa toàn bộ sao, điểm thi, thống kê và sổ tay lỗi sai của "${kid.nickname}"? Hồ sơ vẫn được giữ lại. Không thể khôi phục.`)) break;
@@ -885,6 +895,71 @@
     else if (ev.key === 'Backspace') { ev.preventDefault(); pinKey('⌫'); }
   });
 
+  // ---------------- BẢNG XẾP HẠNG ----------------
+  const LB_PERIODS = [['week', 'Tuần này'], ['month', 'Tháng này'], ['all', 'Mọi thời điểm']];
+  const LB_METRICS = {
+    stars: { icon: '⭐', name: 'Số sao', unit: 'sao' },
+    done: { icon: '📝', name: 'Số câu đã làm', unit: 'câu' },
+    streak: { icon: '🔥', name: 'Kỷ lục ngày học liên tiếp', unit: 'ngày', allOnly: true },
+    exam: { icon: '🏆', name: 'Điểm thi cao nhất', unit: 'điểm', allOnly: true },
+  };
+  let lbView = (() => { try { return Object.assign({ period: 'week', metric: 'stars' }, JSON.parse(localStorage.getItem('timo1-lb') || '{}')); } catch (e) { return { period: 'week', metric: 'stars' }; } })();
+  let lbToken = 0;
+
+  function lbPeriodLabel(period) {
+    if (period === 'week') { const w = T.weekDates(); const f = k => k.slice(8) + '/' + k.slice(5, 7); return `${f(w[0])} – ${f(w[6])}`; }
+    if (period === 'month') { const t = T.today(); return `Tháng ${+t.slice(5, 7)}/${t.slice(0, 4)}`; }
+    return 'Từ trước đến nay';
+  }
+
+  function renderRank() {
+    const { period, metric } = lbView, M = LB_METRICS[metric];
+    const tabs = `
+      <div class="seg">${LB_PERIODS.map(([k, n]) => `<button class="${k === period ? 'on' : ''}" data-act="lb-period" data-k="${k}">${n}</button>`).join('')}</div>
+      <div class="seg metrics">${Object.entries(LB_METRICS).filter(([, m]) => period === 'all' || !m.allOnly)
+        .map(([k, m]) => `<button class="${k === metric ? 'on' : ''}" data-act="lb-metric" data-k="${k}">${m.icon} ${m.name}</button>`).join('')}</div>`;
+    let note = '';
+    if (Cloud.enabled && !Cloud.user) note = '<p class="tip">👨‍👩‍👧 <a href="#/account">Đăng nhập tài khoản phụ huynh</a> để bé được lên bảng xếp hạng.</p>';
+    else if (Cloud.user && !Cloud.kid) note = '<p class="tip">👤 <a href="#/account">Chọn hồ sơ của bé</a> để xem thứ hạng của bé.</p>';
+    else if (Cloud.kid && Cloud.kid.onLeaderboard === false) note = '<p class="tip">🙈 Bé đang được ẩn khỏi bảng xếp hạng. Cha mẹ có thể bật lại trong Khu vực phụ huynh.</p>';
+    $app.innerHTML = `
+      <a href="#/" class="back">← Trang chủ</a>
+      <h1 class="page-title">🏆 Bảng xếp hạng</h1>
+      ${tabs}
+      <div class="card flat lb-card" style="--c:#f59e0b">
+        <div class="lb-head"><b>${M.icon} ${M.name}</b><span class="muted">${lbPeriodLabel(period)}</span></div>
+        <div id="lb-list"><p class="muted center-text">⏳ Đang tải...</p></div>
+      </div>
+      ${note}
+      <p class="muted small">Bảng xếp hạng chỉ hiện tên gọi và con vật đại diện của bé. Số sao theo tuần/tháng là số sao đạt thêm trong lộ trình bài học trong kỳ đó. Ngày học liên tiếp tính những ngày bé có làm bài; kỷ lục được giữ lại kể cả khi chuỗi bị đứt.</p>`;
+    if (!Cloud.enabled) { document.getElementById('lb-list').innerHTML = '<p class="muted center-text">Bảng xếp hạng cần bật tài khoản (Firebase).</p>'; return; }
+    loadRank(++lbToken);
+  }
+
+  async function loadRank(token) {
+    const { period, metric } = lbView, M = LB_METRICS[metric], field = Cloud.lbField(period, metric);
+    let rows, err;
+    try { await Cloud.flush(); rows = await Cloud.fetchLeaderboard(field); } catch (e) { err = e.message; }
+    const box = document.getElementById('lb-list');
+    if (token !== lbToken || !box) return; // người dùng đã chuyển tab
+    if (err) { box.innerHTML = `<p class="fb bad small-fb">⚠️ ${esc(err)}</p>`; return; }
+    const mine = r => Cloud.user && r.uid === Cloud.user.uid;
+    const cur = r => Cloud.kid && mine(r) && r.kidId === Cloud.kid.id;
+    const medal = i => ['🥇', '🥈', '🥉'][i] || `<span class="lb-n">${i + 1}</span>`;
+    let html = rows.length ? `<ol class="lb">${rows.map((r, i) => `
+      <li class="${cur(r) ? 'me' : mine(r) ? 'ours' : ''} ${i < 3 ? 'top' : ''}">
+        <span class="lb-rank">${medal(i)}</span><span class="lb-av">${esc(r.avatar || '🙂')}</span>
+        <span class="lb-name">${esc(r.nickname)}${cur(r) ? ' <small>(con)</small>' : mine(r) ? ' <small>(nhà mình)</small>' : ''}</span>
+        <b class="lb-val">${r[field]} <small>${M.unit}</small></b>
+      </li>`).join('')}</ol>` : `<p class="muted center-text">Chưa có ai trên bảng ${period === 'all' ? '' : lbPeriodLabel(period).toLowerCase() + ' '}. Hãy là người đầu tiên! 🚀</p>`;
+    // Bé đang học nhưng chưa vào top: cho biết số của bé
+    if (Cloud.user && Cloud.kid && Cloud.kid.onLeaderboard !== false && !rows.some(cur)) {
+      const v = Cloud.lbEntryFor(Cloud.kid, Store.data)[field] || 0;
+      html += `<p class="lb-mine">${esc(Cloud.kid.avatar || '')} <b>${esc(Cloud.kid.nickname)}</b>: ${v} ${M.unit}${v ? ' – chưa vào top 50, cố lên nhé! 💪' : ' – học thêm để lên bảng nhé! 💪'}</p>`;
+    }
+    box.innerHTML = html;
+  }
+
   // Khi trạng thái tài khoản thay đổi: cập nhật góc trên và vẽ lại trang (trừ khi bé đang làm bài)
   Cloud.subscribe(() => {
     renderAccountChip();
@@ -893,7 +968,7 @@
       location.hash = '#/account';
       return;
     }
-    if (['home', 'topic', 'progress', 'mistakes', 'exams'].includes(view)) route();
+    if (['home', 'topic', 'progress', 'mistakes', 'exams', 'rank'].includes(view)) route();
     else if (view === 'account' && !acct.busy) renderAccount();
   });
 
@@ -924,6 +999,7 @@
     else if (a === 'speed') renderSpeedIntro();
     else if (a === 'mistakes') renderMistakes();
     else if (a === 'progress') renderProgress();
+    else if (a === 'rank') renderRank();
     else if (a === 'account') { acct.err = acct.msg = ''; renderAccount(); }
     else renderHome();
     window.scrollTo(0, 0);
@@ -951,6 +1027,13 @@
     if (!el) return;
     const act = el.dataset.act;
     if (act.startsWith('ac-')) { ev.preventDefault(); acctAction(act, el); return; }
+    if (act === 'lb-period' || act === 'lb-metric') {
+      lbView[act === 'lb-period' ? 'period' : 'metric'] = el.dataset.k;
+      if (lbView.period !== 'all' && LB_METRICS[lbView.metric].allOnly) lbView.metric = 'stars';
+      try { localStorage.setItem('timo1-lb', JSON.stringify(lbView)); } catch (e) { /* bỏ qua */ }
+      renderRank();
+      return;
+    }
     switch (act) {
       case 'tts': speak(currentQ); break;
       case 'tts-sol': {

@@ -48,9 +48,30 @@ window.T = window.T || {};
     return d.textContent || '';
   };
 
-  T.today = function () {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const pad2 = n => String(n).padStart(2, '0');
+  T.dateKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  T.today = () => T.dateKey(new Date());
+
+  // Tuần tính từ thứ Hai đến Chủ nhật (theo giờ máy). Khóa dạng 2026_40 (năm_tuần ISO), tháng dạng 2026_09.
+  T.weekDates = function (d) {
+    d = d ? new Date(d) : new Date();
+    const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, i) => T.dateKey(new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i)));
+  };
+  T.weekKey = function (d) {
+    d = d ? new Date(d) : new Date();
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+    const week = Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+    return `${t.getUTCFullYear()}_${pad2(week)}`;
+  };
+  T.monthKey = function (d) { d = d ? new Date(d) : new Date(); return `${d.getFullYear()}_${pad2(d.getMonth() + 1)}`; };
+  // Tổng của một nhật ký theo ngày ({ 'YYYY-MM-DD': số }) trong tuần/tháng hiện tại
+  T.periodSum = function (log, period) {
+    log = log || {};
+    if (period === 'week') return T.weekDates().reduce((a, k) => a + (log[k] || 0), 0);
+    const prefix = T.today().slice(0, 8);
+    return Object.keys(log).filter(k => k.startsWith(prefix)).reduce((a, k) => a + (log[k] || 0), 0);
   };
 
   T.fmtTime = function (sec) {

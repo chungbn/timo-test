@@ -9,6 +9,7 @@ Hoặc chạy server tĩnh: `python3 -m http.server 8000` rồi vào http://loca
 - **Thi thử**: 90 đề cố định (30 đề Chuẩn, 30 đề Nâng cao, 30 đề Nhanh) và đề ngẫu nhiên. Có đồng hồ đếm ngược, bảng câu hỏi, đánh dấu câu, chấm điểm, xếp huy chương và xem lại lời giải.
 - **Thử thách hôm nay**, **Luyện tổng hợp**, **Tính nhẩm 60 giây**.
 - **Sổ tay lỗi sai**: tự lưu câu làm sai và xóa khi làm lại đúng.
+- **Bảng xếp hạng**: số sao và số câu đã làm theo tuần, tháng, mọi thời điểm; kỷ lục ngày học liên tiếp (giữ lại dù chuỗi bị đứt); điểm thi cao nhất. Chỉ hiện tên gọi và con vật đại diện; phụ huynh có thể ẩn bé.
 - **Tài khoản phụ huynh** (Firebase, tùy chọn): mỗi tài khoản có nhiều hồ sơ bé, tiến độ đồng bộ trên mọi thiết bị, báo cáo học tập cho phụ huynh. Không đăng nhập vẫn học được, tiến độ lưu trên trình duyệt.
 - **Tiến độ**: tỉ lệ đúng theo chủ đề, lịch sử bài thi, chuỗi ngày học.
 - Bàn phím số trên màn hình (dùng tốt trên máy tính bảng), nút 🔊 đọc đề (tiếng Việt).
@@ -46,6 +47,9 @@ Dữ liệu trên Firestore:
 - `users/{uid}`: email phụ huynh.
 - `users/{uid}/kids/{kidId}`: tên gọi, con vật đại diện, `progress` (sao, thống kê, lịch sử thi, kỷ lục, ngày học).
 - `users/{uid}/kids/{kidId}/mistakes/{k}`: sổ tay lỗi sai.
+- `leaderboard/{uid}_{kidId}`: bảng xếp hạng (ai cũng đọc được): tên gọi, con vật, `allStars`, `allDone`, `bestStreak`, `bestExam` và các trường theo kỳ `ws_/wd_{năm}_{tuần}` (sao/số câu trong tuần), `ms_/md_{năm}_{tháng}`. Mỗi lần ghi là ghi đè cả bản ghi nên trường của kỳ cũ tự mất; sắp xếp dùng chỉ mục một trường tự động của Firestore, không cần tạo chỉ mục.
+
+**Khi sửa `firestore.rules`**, nhớ dán lại vào Firebase Console → Firestore Database → Rules → Publish.
 
 **Khu vực phụ huynh** (trang Tài khoản) được khóa bằng mã PIN 4 số: báo cáo học tập, thêm/sửa/xóa hồ sơ, **xóa dữ liệu học tập** của từng bé, đổi PIN, đăng xuất. Bé chỉ chọn được hồ sơ để học. PIN được tạo ngay sau khi phụ huynh đăng nhập; quên PIN thì xác nhận lại mật khẩu hoặc tài khoản Google để đặt PIN mới. PIN lưu dạng băm SHA-256 trong `users/{uid}.pinHash`; sai 5 lần sẽ tạm khóa 30 giây; khu vực tự khóa sau 10 phút hoặc khi bé chọn hồ sơ.
 

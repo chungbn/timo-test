@@ -3,7 +3,16 @@
   // Dữ liệu học tập của hồ sơ đang dùng. Luôn lưu vào localStorage trước (chạy được khi mất mạng);
   // khi đăng nhập, cloud.js lắng nghe onChange để đồng bộ lên Firestore.
   const GUEST_KEY = 'timo1-data-v1';
-  const blank = () => ({ stats: {}, stars: {}, exams: [], best: {}, speedBest: 0, mistakes: [], daily: {} });
+  // starLog/doneLog: số sao đạt thêm / số câu đã làm theo từng ngày (cho bảng xếp hạng tuần, tháng).
+  // bestStreak: kỷ lục số ngày học liên tiếp (giữ lại dù chuỗi bị đứt). bestExam: điểm thi cao nhất.
+  const blank = () => ({ stats: {}, stars: {}, exams: [], best: {}, speedBest: 0, mistakes: [], daily: {}, starLog: {}, doneLog: {}, bestStreak: 0, bestExam: 0 });
+  const LOG_DAYS = 70; // chỉ giữ nhật ký ~10 tuần gần nhất
+  function pruneLog(log) {
+    const cut = new Date(); cut.setDate(cut.getDate() - LOG_DAYS);
+    const min = T.dateKey(cut);
+    for (const k of Object.keys(log)) if (k < min) delete log[k];
+  }
+  const addLog = (log, n) => { const k = T.today(); log[k] = (log[k] || 0) + n; pruneLog(log); };
   const qKey = q => T.hashStr(q.text + '|' + q.visual + '|' + q.answer);
 
   function read(key) {
@@ -19,15 +28,30 @@
   const emit = (kind, payload) => { if (T.Store.onChange) T.Store.onChange(kind, payload); };
 
   function totalStars(d) { return Object.entries(d.stars).filter(([k]) => /-L\d+$/.test(k)).reduce((a, [, v]) => a + v, 0); }
+  // Số ngày học liên tiếp: ngày có làm bài (hoặc làm thử thách hôm nay). Hôm nay chưa học thì tính đến hôm qua.
   function streak(d) {
+    const active = k => d.daily[k] != null || (d.doneLog && d.doneLog[k] > 0);
     let n = 0; const day = new Date();
     for (;;) {
-      const k = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
-      if (d.daily[k] == null) { if (n === 0 && k === T.today()) { day.setDate(day.getDate() - 1); continue; } break; }
+      const k = T.dateKey(day);
+      if (!active(k)) { if (n === 0 && k === T.today()) { day.setDate(day.getDate() - 1); continue; } break; }
       n++; day.setDate(day.getDate() - 1);
     }
     return n;
   }
+  // Chuỗi ngày học dài nhất từng có (tính từ lịch sử + kỷ lục đã lưu), để chuỗi có đứt thì kỷ lục vẫn còn
+  function longestRun(d) {
+    const days = [...new Set(Object.keys(d.daily || {}).concat(Object.keys(d.doneLog || {}).filter(k => d.doneLog[k] > 0)))].sort();
+    let best = 0, run = 0, prev = null;
+    for (const k of days) {
+      const t = new Date(k + 'T00:00:00');
+      run = prev && Math.round((t - prev) / 86400000) === 1 ? run + 1 : 1;
+      best = Math.max(best, run); prev = t;
+    }
+    return best;
+  }
+  const bestStreak = d => Math.max(d.bestStreak || 0, streak(d), longestRun(d));
+  const bestExam = d => Math.max(d.bestExam || 0, ...d.exams.map(e => e.score || 0));
 
   // Gộp tiến độ từ hai nơi (máy này và máy khác) mà không làm mất gì:
   // sao/điểm cao nhất/kỷ lục lấy số lớn hơn, lịch sử thi gộp lại, thống kê lấy bản đã làm nhiều câu hơn.
@@ -45,11 +69,14 @@
       stats, stars: maxMap(a.stars, b.stars), best: maxMap(a.best, b.best), daily: maxMap(a.daily, b.daily),
       speedBest: Math.max(a.speedBest || 0, b.speedBest || 0), exams: exams.slice(0, 50),
       mistakes: [...ms.values()].sort((x, y) => y.at - x.at).slice(0, 80),
+      // Nhật ký theo ngày lấy số lớn hơn (gộp nhiều lần vẫn không bị cộng trùng)
+      starLog: maxMap(a.starLog, b.starLog), doneLog: maxMap(a.doneLog, b.doneLog),
+      bestStreak: Math.max(a.bestStreak || 0, b.bestStreak || 0), bestExam: Math.max(bestExam(a), bestExam(b)),
     };
   }
 
   T.Store = {
-    GUEST_KEY, blank, read, merge,
+    GUEST_KEY, blank, read, merge, bestStreakOf: bestStreak, bestExamOf: bestExam,
     onChange: null, // (kind, payload) => void — cloud.js gán vào
     get data() { return data; },
     get key() { return key; },
@@ -64,15 +91,24 @@
     recordAnswer(topic, ok) {
       const s = data.stats[topic] || (data.stats[topic] = { done: 0, correct: 0 });
       s.done++; if (ok) s.correct++;
+      addLog(data.doneLog, 1);
+      data.bestStreak = bestStreak(data);
       save('answer');
     },
-    setStars(k, n) { if (n > (data.stars[k] || 0)) { data.stars[k] = n; save('progress'); } },
+    setStars(k, n) {
+      const old = data.stars[k] || 0;
+      if (n <= old) return;
+      data.stars[k] = n;
+      if (/-L\d+$/.test(k)) addLog(data.starLog, n - old); // chỉ tính sao của lộ trình bài học
+      save('progress');
+    },
     stars(k) { return data.stars[k] || 0; },
     totalStars(d) { return totalStars(d || data); },
     addExam(rec) {
       data.exams.unshift(rec);
       data.exams = data.exams.slice(0, 50);
       if (rec.key && !rec.key.endsWith('-r')) data.best[rec.key] = Math.max(data.best[rec.key] || 0, rec.score);
+      data.bestExam = Math.max(data.bestExam || 0, rec.score);
       save('progress');
     },
     best(k) { return data.best[k]; },
@@ -96,7 +132,7 @@
       emit('mistake-remove', k);
     },
     clearMistakes() { data.mistakes = []; save('local'); emit('mistakes-clear'); },
-    setDaily(date, score) { data.daily[date] = Math.max(data.daily[date] || 0, score); save('progress'); },
+    setDaily(date, score) { data.daily[date] = Math.max(data.daily[date] || 0, score); data.bestStreak = bestStreak(data); save('progress'); },
     streak(d) { return streak(d || data); },
     reset() { data = blank(); save('local'); emit('reset'); },
   };

@@ -37,7 +37,10 @@
   const kidRef = id => kidsCol().doc(id);
   const toDate = ts => (ts && ts.toDate ? ts.toDate() : ts ? new Date(ts) : null);
   const now = () => firebase.firestore.FieldValue.serverTimestamp();
-  const progressOf = d => ({ stats: d.stats, stars: d.stars, exams: d.exams, best: d.best, speedBest: d.speedBest, daily: d.daily });
+  const progressOf = d => ({
+    stats: d.stats, stars: d.stars, exams: d.exams, best: d.best, speedBest: d.speedBest, daily: d.daily,
+    starLog: d.starLog || {}, doneLog: d.doneLog || {}, bestStreak: d.bestStreak || 0, bestExam: d.bestExam || 0,
+  });
   const readProfile = () => { try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); } catch (e) { return null; } };
 
   // Firestore không nhận giá trị undefined
@@ -168,6 +171,7 @@
     Store.use(cacheKey(uid, id), merged);
     Cloud.kid = kid;
     localStorage.setItem(PROFILE_KEY, JSON.stringify({ uid, kidId: id, nickname: kid.nickname, avatar: kid.avatar }));
+    writeLeaderboard(kid, merged); // cập nhật kỳ tuần/tháng mới và dữ liệu cũ chưa có trên bảng
     emitChange();
   };
 
@@ -206,6 +210,8 @@
   Cloud.updateKid = async function (id, { nickname, avatar }) {
     await kidRef(id).update({ nickname, avatar, updatedAt: now() });
     await Cloud.refreshKids();
+    const k = Cloud.kids.find(x => x.id === id);
+    if (k) writeLeaderboard(k, Cloud.kid && Cloud.kid.id === id ? Store.data : k.progress);
     if (Cloud.kid && Cloud.kid.id === id) {
       Object.assign(Cloud.kid, { nickname, avatar });
       const p = readProfile();
@@ -223,7 +229,7 @@
       try { localStorage.removeItem(cacheKey(Cloud.user.uid, id)); } catch (e) { /* bỏ qua */ }
     }
     const k = Cloud.kids.find(x => x.id === id);
-    if (k) k.progress = progressOf(Store.blank());
+    if (k) { k.progress = progressOf(Store.blank()); await writeLeaderboard(k, Store.blank()); }
     emitChange();
   };
 
@@ -233,6 +239,7 @@
     ms.docs.forEach(d => batch.delete(d.ref));
     batch.delete(kidRef(id));
     await batch.commit();
+    await lbRef(id).delete().catch(() => { /* chưa có trên bảng */ });
     try { localStorage.removeItem(cacheKey(Cloud.user.uid, id)); } catch (e) { /* bỏ qua */ }
     if (Cloud.kid && Cloud.kid.id === id) { localStorage.removeItem(PROFILE_KEY); Cloud.kid = null; Store.use(Store.GUEST_KEY); }
     await Cloud.refreshKids();
@@ -282,6 +289,7 @@
         tx.update(ref, { progress: clean(progressOf(m)), updatedAt: now() });
         return m;
       });
+      if (Cloud.kid && ref.id === Cloud.kid.id) writeLeaderboard(Cloud.kid, merged);
       if (Cloud.kid && ref.id === Cloud.kid.id) {
         // Gộp lần nữa với dữ liệu hiện tại: bé có thể đã làm thêm câu trong lúc đang gửi
         const cur = Store.data, next = Store.merge(cur, merged);
@@ -291,7 +299,62 @@
     } catch (e) {
       // Mất mạng: ghi thẳng, Firestore sẽ tự gửi khi có mạng trở lại
       ref.update({ progress: clean(progressOf(local)), updatedAt: now() }).catch(err => { dirty = true; console.warn(err); });
+      if (Cloud.kid && ref.id === Cloud.kid.id) writeLeaderboard(Cloud.kid, local);
     }
+  };
+
+  // ---------------- bảng xếp hạng ----------------
+  // leaderboard/{uid}_{kidId}: chỉ tên gọi, con vật đại diện và các con số. Mọi người đọc được; chỉ phụ huynh ghi được của con mình.
+  // Chỉ số theo tuần/tháng lưu ở trường có tên theo kỳ (ws_2026_40, md_2026_09...) để truy vấn bằng chỉ mục tự động của Firestore;
+  // mỗi lần ghi là ghi đè cả bản ghi nên trường của kỳ cũ tự biến mất.
+  const lbRef = kidId => db.collection('leaderboard').doc(`${Cloud.user.uid}_${kidId}`);
+  const onBoard = kid => kid.onLeaderboard !== false;
+  function lbEntry(kid, d) {
+    d = Object.assign(Store.blank(), d);
+    const wk = T.weekKey(), mk = T.monthKey();
+    const e = {
+      uid: Cloud.user ? Cloud.user.uid : '', kidId: kid.id, nickname: kid.nickname, avatar: kid.avatar || '🙂',
+      allStars: Store.totalStars(d), allDone: Object.values(d.stats).reduce((a, s) => a + (s.done || 0), 0),
+      bestStreak: Store.bestStreakOf(d), bestExam: Store.bestExamOf(d), updatedAt: now(),
+    };
+    const add = (k, v) => { if (v > 0) e[k] = v; };
+    add(`ws_${wk}`, T.periodSum(d.starLog, 'week')); add(`wd_${wk}`, T.periodSum(d.doneLog, 'week'));
+    add(`ms_${mk}`, T.periodSum(d.starLog, 'month')); add(`md_${mk}`, T.periodSum(d.doneLog, 'month'));
+    return e;
+  }
+  function writeLeaderboard(kid, d) {
+    if (!db || !Cloud.user || !kid) return Promise.resolve();
+    const p = onBoard(kid) ? lbRef(kid.id).set(lbEntry(kid, d)) : lbRef(kid.id).delete();
+    return p.catch(e => console.warn('Không cập nhật được bảng xếp hạng', e));
+  }
+  // Tên trường cần sắp xếp cho từng bảng
+  Cloud.lbField = function (period, metric) {
+    if (period === 'all') return { stars: 'allStars', done: 'allDone', streak: 'bestStreak', exam: 'bestExam' }[metric];
+    const key = period === 'week' ? T.weekKey() : T.monthKey();
+    return `${period === 'week' ? 'w' : 'm'}${metric === 'stars' ? 's' : 'd'}_${key}`;
+  };
+  const lbCache = {};
+  Cloud.fetchLeaderboard = async function (field, limit = 50) {
+    const c = lbCache[field];
+    if (c && Date.now() - c.at < 60000) return c.rows;
+    if (!db) throw new Error('Tài khoản chưa được bật.');
+    try {
+      const snap = await db.collection('leaderboard').orderBy(field, 'desc').limit(limit).get();
+      const rows = snap.docs.map(d => Object.assign({ id: d.id }, d.data())).filter(r => (r[field] || 0) > 0);
+      lbCache[field] = { at: Date.now(), rows };
+      return rows;
+    } catch (e) { throw new Error(errorText(e)); }
+  };
+  Cloud.lbEntryFor = (kid, d) => lbEntry(kid, d);
+  Cloud.setLeaderboard = async function (id, on) {
+    await kidRef(id).update({ onLeaderboard: on, updatedAt: now() });
+    const kid = Cloud.kids.find(k => k.id === id);
+    if (kid) kid.onLeaderboard = on;
+    if (Cloud.kid && Cloud.kid.id === id) Cloud.kid.onLeaderboard = on;
+    const d = Cloud.kid && Cloud.kid.id === id ? Store.data : (kid && kid.progress) || {};
+    Object.keys(lbCache).forEach(k => delete lbCache[k]);
+    await writeLeaderboard(kid, d);
+    emitChange();
   };
 
   // ---------------- báo cáo cho phụ huynh ----------------
@@ -305,7 +368,7 @@
     return {
       stars: Store.totalStars(d), done, pct: done ? Math.round(correct / done * 100) : 0,
       exams: d.exams.length, bestExam: d.exams.length ? Math.max(...d.exams.map(e => e.score)) : null,
-      lastExam: d.exams[0] || null, streak: Store.streak(d), weak: weak ? weak.t : null,
+      lastExam: d.exams[0] || null, streak: Store.streak(d), bestStreak: Store.bestStreakOf(d), weak: weak ? weak.t : null,
       updatedAt: toDate(kid.updatedAt),
     };
   };
