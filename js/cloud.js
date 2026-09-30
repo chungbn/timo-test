@@ -155,8 +155,15 @@
       await batch.commit();
     }
     if (importGuest) { Store.use(Store.GUEST_KEY, Store.blank()); }
-    await Cloud.refreshKids();
-    await Cloud.selectKid(ref.id);
+    // Hồ sơ mới: đã có sẵn dữ liệu nên chọn luôn, không cần đọc lại từ server
+    await Cloud.flush();
+    const kid = { id: ref.id, nickname, avatar, progress, createdAt: new Date(), updatedAt: new Date() };
+    Cloud.kids.push(kid);
+    const data = Object.assign(Store.blank(), progress, { mistakes: importGuest ? guest.mistakes : [] });
+    Store.use(cacheKey(Cloud.user.uid, ref.id), data);
+    Cloud.kid = kid;
+    localStorage.setItem(PROFILE_KEY, JSON.stringify({ uid: Cloud.user.uid, kidId: ref.id, nickname, avatar }));
+    emitChange();
     return ref.id;
   };
 

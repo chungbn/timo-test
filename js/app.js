@@ -622,7 +622,7 @@
         <form class="auth-form" onsubmit="return false">
           <label>Email<input id="ac-email" type="email" autocomplete="email" value="${esc(acct.email)}" required></label>
           <label>Mật khẩu<input id="ac-pass" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" minlength="6" value="${esc(acct.pass)}" required></label>
-          <button class="btn primary" id="primary" data-act="${signup ? 'ac-signup' : 'ac-login'}" ${dis}>${signup ? 'Tạo tài khoản' : 'Đăng nhập'}</button>
+          <button class="btn primary" id="primary" data-act="${signup ? 'ac-signup' : 'ac-login'}" ${dis}>${acct.busy ? '⏳ Đang xử lý...' : signup ? 'Tạo tài khoản' : 'Đăng nhập'}</button>
         </form>
         <p class="center-text small">
           ${signup ? 'Đã có tài khoản? <a href="javascript:void 0" data-act="ac-mode" data-m="login">Đăng nhập</a>' : 'Chưa có tài khoản? <a href="javascript:void 0" data-act="ac-mode" data-m="signup">Tạo tài khoản mới</a> · <a href="javascript:void 0" data-act="ac-forgot">Quên mật khẩu?</a>'}
@@ -645,7 +645,7 @@
         ${!kid && guestHasData ? '<label class="check"><input type="checkbox" id="kid-import" checked> Chuyển tiến độ đang có trên máy này (chế độ khách) vào hồ sơ này</label>' : ''}
         <p class="muted small">Để bảo vệ trẻ em, web chỉ lưu tên gọi và con vật đại diện, không cần họ tên hay ngày sinh.</p>
         <div class="actions">
-          <button class="btn primary" id="primary" data-act="ac-save" ${dis}>💾 Lưu</button>
+          <button class="btn primary" id="primary" data-act="ac-save" ${dis}>${acct.busy ? '⏳ Đang lưu...' : '💾 Lưu'}</button>
           <button class="btn" data-act="ac-cancel">Hủy</button>
           ${kid ? `<button class="btn danger" data-act="ac-del" data-id="${kid.id}" ${dis}>🗑 Xóa hồ sơ</button>` : ''}
         </div>
