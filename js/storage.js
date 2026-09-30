@@ -27,7 +27,15 @@
   };
   const emit = (kind, payload) => { if (T.Store.onChange) T.Store.onChange(kind, payload); };
 
-  function totalStars(d) { return Object.entries(d.stars).filter(([k]) => /-L\d+$/.test(k)).reduce((a, [, v]) => a + v, 0); }
+  // Sao = sao lộ trình bài học + sao thưởng (mỗi ngày hoàn thành Thử thách hôm nay được T.DAILY_BONUS sao).
+  // Sao thưởng tính từ danh sách ngày đã hoàn thành (d.daily) nên đồng bộ nhiều máy không bị cộng trùng.
+  T.DAILY_BONUS = 20;
+  const lessonStars = d => Object.entries(d.stars).filter(([k]) => /-L\d+$/.test(k)).reduce((a, [, v]) => a + v, 0);
+  const bonusStars = (d, period) => {
+    const days = Object.keys(d.daily || {});
+    return T.DAILY_BONUS * (period ? T.periodSum(Object.fromEntries(days.map(k => [k, 1])), period) : days.length);
+  };
+  function totalStars(d) { return lessonStars(d) + bonusStars(d); }
   // Số ngày học liên tiếp: ngày có làm bài (hoặc làm thử thách hôm nay). Hôm nay chưa học thì tính đến hôm qua.
   function streak(d) {
     const active = k => d.daily[k] != null || (d.doneLog && d.doneLog[k] > 0);
@@ -104,6 +112,8 @@
     },
     stars(k) { return data.stars[k] || 0; },
     totalStars(d) { return totalStars(d || data); },
+    lessonStars(d) { return lessonStars(d || data); },
+    bonusStars(d, period) { return bonusStars(d || data, period); },
     addExam(rec) {
       data.exams.unshift(rec);
       data.exams = data.exams.slice(0, 50);
@@ -132,7 +142,14 @@
       emit('mistake-remove', k);
     },
     clearMistakes() { data.mistakes = []; save('local'); emit('mistakes-clear'); },
-    setDaily(date, score) { data.daily[date] = Math.max(data.daily[date] || 0, score); data.bestStreak = bestStreak(data); save('progress'); },
+    // Ghi nhận hoàn thành Thử thách hôm nay; trả về true nếu là lần đầu trong ngày (vừa nhận sao thưởng)
+    setDaily(date, score) {
+      const first = data.daily[date] == null;
+      data.daily[date] = Math.max(data.daily[date] || 0, score);
+      data.bestStreak = bestStreak(data);
+      save('progress');
+      return first;
+    },
     streak(d) { return streak(d || data); },
     reset() { data = blank(); save('local'); emit('reset'); },
   };

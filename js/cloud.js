@@ -318,8 +318,8 @@
       bestStreak: Store.bestStreakOf(d), bestExam: Store.bestExamOf(d), updatedAt: now(),
     };
     const add = (k, v) => { if (v > 0) e[k] = v; };
-    add(`ws_${wk}`, T.periodSum(d.starLog, 'week')); add(`wd_${wk}`, T.periodSum(d.doneLog, 'week'));
-    add(`ms_${mk}`, T.periodSum(d.starLog, 'month')); add(`md_${mk}`, T.periodSum(d.doneLog, 'month'));
+    add(`ws_${wk}`, T.periodSum(d.starLog, 'week') + Store.bonusStars(d, 'week')); add(`wd_${wk}`, T.periodSum(d.doneLog, 'week'));
+    add(`ms_${mk}`, T.periodSum(d.starLog, 'month') + Store.bonusStars(d, 'month')); add(`md_${mk}`, T.periodSum(d.doneLog, 'month'));
     return e;
   }
   function writeLeaderboard(kid, d) {
@@ -366,7 +366,7 @@
     const weak = T.TOPICS.map(t => ({ t, s: d.stats[t.id] })).filter(x => x.s && x.s.done >= 5)
       .sort((a, b) => a.s.correct / a.s.done - b.s.correct / b.s.done)[0];
     return {
-      stars: Store.totalStars(d), done, pct: done ? Math.round(correct / done * 100) : 0,
+      stars: Store.totalStars(d), lessonStars: Store.lessonStars(d), done, pct: done ? Math.round(correct / done * 100) : 0,
       exams: d.exams.length, bestExam: d.exams.length ? Math.max(...d.exams.map(e => e.score)) : null,
       lastExam: d.exams[0] || null, streak: Store.streak(d), bestStreak: Store.bestStreakOf(d), weak: weak ? weak.t : null,
       updatedAt: toDate(kid.updatedAt),

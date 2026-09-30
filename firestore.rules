@@ -28,7 +28,7 @@ service cloud.firestore {
         && request.resource.data.nickname is string
         && request.resource.data.nickname.size() > 0
         && request.resource.data.nickname.size() <= 20
-        && request.resource.data.allStars is int && request.resource.data.allStars >= 0 && request.resource.data.allStars <= 1000
+        && request.resource.data.allStars is int && request.resource.data.allStars >= 0 && request.resource.data.allStars <= 100000
         && request.resource.data.allDone is int && request.resource.data.allDone >= 0
         && request.resource.data.bestStreak is int && request.resource.data.bestStreak >= 0
         && request.resource.data.bestExam is int && request.resource.data.bestExam >= 0 && request.resource.data.bestExam <= 100;

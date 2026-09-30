@@ -425,3 +425,33 @@ code { background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: .9e
 .lb-mine { margin: 10px 0 0; padding: 10px 14px; background: #fef3c7; border-radius: 14px; }
 .btn.lb-on { border-color: #fcd34d; background: #fffbeb; }
 @media (max-width: 600px) { .seg button { padding: 6px 10px; font-size: 14px; } .topbar nav a { padding: 4px 6px; } }
+
+/* ---------- quà Thử thách hôm nay ---------- */
+.daily { background: linear-gradient(120deg, #fffbeb, #fff 45%, #fff7ed); border-width: 3px; }
+.daily:not(.done) { border-style: solid; border-color: #f59e0b; box-shadow: 0 0 0 0 rgba(245, 158, 11, .5), var(--shadow); animation: dailyGlow 2.2s infinite; }
+.daily-text { flex: 1; }
+.daily-text b { color: #b45309; }
+.gift {
+  flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  min-width: 118px; padding: 10px 14px; border-radius: 20px; color: #fff; text-align: center;
+  background: linear-gradient(160deg, #f59e0b, #f97316 60%, #ec4899); box-shadow: 0 5px 0 #c2410c;
+}
+.gift-ico { font-size: 34px; line-height: 1; animation: giftWiggle 1.6s infinite; }
+.gift b { font: 800 26px var(--font-head); line-height: 1.1; white-space: nowrap; }
+.gift small { font-weight: 800; font-size: 13px; opacity: .95; white-space: nowrap; }
+.gift.got { background: linear-gradient(160deg, #22c55e, #16a34a); box-shadow: 0 5px 0 #15803d; }
+.gift.got .gift-ico { animation: none; }
+.bonus-banner {
+  display: inline-block; margin-bottom: 10px; padding: 12px 20px; border-radius: 18px; font-weight: 800; font-size: 20px;
+  background: linear-gradient(120deg, #fef3c7, #ffedd5); border: 3px solid #f59e0b; animation: pop .5s;
+}
+@keyframes giftWiggle { 0%, 60%, 100% { transform: rotate(0) scale(1); } 70% { transform: rotate(-14deg) scale(1.1); } 80% { transform: rotate(12deg) scale(1.1); } 90% { transform: rotate(-6deg); } }
+@keyframes dailyGlow { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, .45), var(--shadow); } 70% { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0), var(--shadow); } 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0), var(--shadow); } }
+@media (max-width: 600px) {
+  .daily { flex-wrap: wrap; }
+  .daily-ico { font-size: 36px; }
+  .gift { flex-direction: row; gap: 8px; width: 100%; min-width: 0; }
+  .gift b { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { .gift-ico, .daily:not(.done) { animation: none; } }
+main > .daily:first-child { margin: 0 0 18px; }

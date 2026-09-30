@@ -123,7 +123,19 @@
     const done = Object.values(d.stats).reduce((a, s) => a + s.done, 0);
     const bestExam = d.exams.length ? Math.max(...d.exams.map(e => e.score)) : '–';
     const todayDone = d.daily[T.today()] != null;
+    // Chưa nhận quà hôm nay: đưa thẻ Thử thách lên đầu trang cho bé thấy ngay
+    const dailyCard = `
+    <a class="daily ${todayDone ? 'done' : ''}" href="#/daily">
+      <div class="daily-ico">🌞</div>
+      <div class="daily-text"><h3>Thử thách hôm nay</h3><p>${todayDone
+        ? `Con đã nhận <b>${T.DAILY_BONUS} ⭐</b> hôm nay (${d.daily[T.today()]}/10 câu đúng). Mai quay lại nhận tiếp nhé!`
+        : `Làm xong 10 câu hỏi là được thưởng ngay <b>${T.DAILY_BONUS} sao</b>! Mỗi ngày một lần.`}</p></div>
+      ${todayDone
+        ? `<span class="gift got"><span class="gift-ico">✅</span><b>+${T.DAILY_BONUS} ⭐</b><small>đã nhận</small></span>`
+        : `<span class="gift"><span class="gift-ico">🎁</span><b>+${T.DAILY_BONUS} ⭐</b><small>Nhận ngay →</small></span>`}
+    </a>`;
     $app.innerHTML = `
+    ${todayDone ? '' : dailyCard}
     <section class="hero">
       <div class="hero-text">
         <h1>${Cloud.kid ? `Chào ${esc(Cloud.kid.nickname)} ${esc(Cloud.kid.avatar || '')}!` : 'Chinh phục <span>TIMO</span> lớp 1 🦉'}</h1>
@@ -137,11 +149,7 @@
       </div>
     </section>
 
-    <a class="daily ${todayDone ? 'done' : ''}" href="#/daily">
-      <div class="daily-ico">🌞</div>
-      <div><h3>Thử thách hôm nay</h3><p>${todayDone ? `Con đã làm hôm nay: ${d.daily[T.today()]}/10 câu đúng. Làm lại để cải thiện nhé!` : '10 câu hỏi mới mỗi ngày từ cả 5 chủ đề. Giữ chuỗi ngày học nhé!'}</p></div>
-      <span class="go">${todayDone ? '✅' : 'Bắt đầu →'}</span>
-    </a>
+${todayDone ? dailyCard : ''}
 
     <h2 class="sec-title">📚 Học theo chủ đề</h2>
     <div class="grid topics">
@@ -260,12 +268,13 @@
       s.saved = true;
       if (s.starKey) Store.setStars(s.starKey, stars);
       if (s.onDone) s.onDone(s);
-      if (stars === 3) confetti();
+      if (stars === 3 || s.bonus) confetti();
     }
     const next = s.lesson && s.lesson < T.LESSON_COUNT ? `#/practice/${s.topic}/${s.lesson + 1}` : null;
     const msg = stars === 3 ? 'Tuyệt vời! Con là nhà toán học nhí! 🏆' : stars === 2 ? 'Rất tốt! Cố thêm chút nữa để được 3 sao nhé! 🌟' : stars === 1 ? 'Khá lắm! Xem lại lời giải và thử lần nữa nhé! 💪' : 'Không sao cả! Đọc lại phần kiến thức rồi luyện tiếp nhé! 📖';
     $app.innerHTML = `
     <div class="result-card">
+      ${s.bonus ? `<div class="bonus-banner">🎁 Con hoàn thành Thử thách hôm nay và được thưởng <b>${T.DAILY_BONUS} ⭐</b>!</div>` : ''}
       <div class="big-stars">${starsHtml(stars)}</div>
       <h1>${s.correct}/${n} câu đúng</h1>
       <p>${msg}</p>
@@ -551,7 +560,7 @@
     <div class="hero-stats wide">
       <div><b>${done}</b><span>câu đã làm</span></div>
       <div><b>${done ? Math.round(correct / done * 100) : 0}%</b><span>tỉ lệ đúng</span></div>
-      <div><b>${Store.totalStars()}/${TOPICS.length * T.LESSON_COUNT * 3}</b><span>⭐ sao</span></div>
+      <div><b>${Store.totalStars()}</b><span>⭐ sao (lộ trình ${Store.lessonStars()}/${TOPICS.length * T.LESSON_COUNT * 3} · thưởng ${Store.bonusStars()})</span></div>
       <div><b>${d.exams.length}</b><span>bài thi</span></div>
       <div><b>${d.speedBest}</b><span>⚡ kỷ lục tính nhẩm</span></div>
       <div><b>${Store.streak()}</b><span>🔥 ngày liên tiếp</span></div>
@@ -761,7 +770,7 @@
             <button class="btn small ${k.onLeaderboard === false ? '' : 'lb-on'}" data-act="ac-lb" data-id="${k.id}" ${dis} title="Hiện hoặc ẩn bé trên bảng xếp hạng">🏆 ${k.onLeaderboard === false ? 'Đang ẩn' : 'Đang hiện'} trên bảng xếp hạng</button>
             <button class="btn small danger" data-act="ac-reset" data-id="${k.id}" ${dis}>🗑 Xóa dữ liệu học tập</button></div>
           <div class="rep-grid">
-            <div><b>${s.stars}</b><span>⭐ sao / ${TOPICS.length * T.LESSON_COUNT * 3}</span></div>
+            <div><b>${s.stars}</b><span>⭐ sao · lộ trình ${s.lessonStars}/${TOPICS.length * T.LESSON_COUNT * 3}</span></div>
             <div><b>${s.done}</b><span>câu đã làm</span></div>
             <div><b>${s.pct}%</b><span>tỉ lệ đúng</span></div>
             <div><b>${s.exams}</b><span>bài thi${s.bestExam != null ? ` · cao nhất ${s.bestExam}đ` : ''}</span></div>
@@ -931,7 +940,7 @@
         <div id="lb-list"><p class="muted center-text">⏳ Đang tải...</p></div>
       </div>
       ${note}
-      <p class="muted small">Bảng xếp hạng chỉ hiện tên gọi và con vật đại diện của bé. Số sao theo tuần/tháng là số sao đạt thêm trong lộ trình bài học trong kỳ đó. Ngày học liên tiếp tính những ngày bé có làm bài; kỷ lục được giữ lại kể cả khi chuỗi bị đứt.</p>`;
+      <p class="muted small">Bảng xếp hạng chỉ hiện tên gọi và con vật đại diện của bé. Số sao gồm sao trong lộ trình bài học và ${T.DAILY_BONUS} sao thưởng mỗi ngày hoàn thành Thử thách hôm nay; theo tuần/tháng là số sao đạt thêm trong kỳ đó. Ngày học liên tiếp tính những ngày bé có làm bài; kỷ lục được giữ lại kể cả khi chuỗi bị đứt.</p>`;
     if (!Cloud.enabled) { document.getElementById('lb-list').innerHTML = '<p class="muted center-text">Bảng xếp hạng cần bật tài khoản (Firebase).</p>'; return; }
     loadRank(++lbToken);
   }
@@ -990,9 +999,9 @@
     } else if (a === 'daily') {
       const date = T.today();
       startSession({
-        title: `🌞 Thử thách ngày ${date.split('-').reverse().join('/')}`, back: '#/', mode: 'daily',
+        title: `🌞 Thử thách ngày ${date.split('-').reverse().join('/')}${Store.data.daily[date] == null ? ` · 🎁 xong nhận ${T.DAILY_BONUS} ⭐` : ''}`, back: '#/', mode: 'daily',
         make: () => mixedQuestions(T.makeRng(T.hashStr('daily' + date)), 10, [1, 2, 2, 3, 2]),
-        onDone: s => Store.setDaily(date, s.correct),
+        onDone: s => { s.bonus = Store.setDaily(date, s.correct); },
       });
     } else if (a === 'exams') renderExamList();
     else if (a === 'exam') routeExam(b, c === 'r' ? 'r' : +c || 1);
