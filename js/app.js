@@ -923,25 +923,26 @@ ${todayDone ? dailyCard : ''}
 
   function renderRank() {
     const { period, metric } = lbView, M = LB_METRICS[metric];
-    const tabs = `
-      <div class="seg">${LB_PERIODS.map(([k, n]) => `<button class="${k === period ? 'on' : ''}" data-act="lb-period" data-k="${k}">${n}</button>`).join('')}</div>
-      <div class="seg metrics">${Object.entries(LB_METRICS).filter(([, m]) => period === 'all' || !m.allOnly)
-        .map(([k, m]) => `<button class="${k === metric ? 'on' : ''}" data-act="lb-metric" data-k="${k}">${m.icon} ${m.name}</button>`).join('')}</div>`;
     let note = '';
-    if (Cloud.enabled && !Cloud.user) note = '<p class="tip">👨‍👩‍👧 <a href="#/account">Đăng nhập tài khoản phụ huynh</a> để bé được lên bảng xếp hạng.</p>';
-    else if (Cloud.user && !Cloud.kid) note = '<p class="tip">👤 <a href="#/account">Chọn hồ sơ của bé</a> để xem thứ hạng của bé.</p>';
-    else if (Cloud.kid && Cloud.kid.onLeaderboard === false) note = '<p class="tip">🙈 Bé đang được ẩn khỏi bảng xếp hạng. Cha mẹ có thể bật lại trong Khu vực phụ huynh.</p>';
+    if (Cloud.enabled && !Cloud.user) note = '👨‍👩‍👧 <a href="#/account">Đăng nhập tài khoản phụ huynh</a> để bé được lên bảng xếp hạng.';
+    else if (Cloud.user && !Cloud.kid) note = '👤 <a href="#/account">Chọn hồ sơ của bé</a> để xem thứ hạng của bé.';
+    else if (Cloud.kid && Cloud.kid.onLeaderboard === false) note = '🙈 Bé đang được ẩn khỏi bảng xếp hạng. Cha mẹ có thể bật lại trong Khu vực phụ huynh.';
     $app.innerHTML = `
       <a href="#/" class="back">← Trang chủ</a>
-      <h1 class="page-title">🏆 Bảng xếp hạng</h1>
-      ${tabs}
-      <div class="card flat lb-card" style="--c:#f59e0b">
-        <div class="lb-head"><b>${M.icon} ${M.name}</b><span class="muted">${lbPeriodLabel(period)}</span></div>
-        <div id="lb-list"><p class="muted center-text">⏳ Đang tải...</p></div>
+      <section class="rank-hero">
+        <div class="rank-trophy">🏆</div>
+        <h1>Bảng xếp hạng</h1>
+        <p>${M.icon} ${M.name} · <b>${lbPeriodLabel(period)}</b></p>
+      </section>
+      <div class="rank-tabs">
+        <div class="seg">${LB_PERIODS.map(([k, n]) => `<button class="${k === period ? 'on' : ''}" data-act="lb-period" data-k="${k}">${n}</button>`).join('')}</div>
+        <div class="chips">${Object.entries(LB_METRICS).filter(([, m]) => period === 'all' || !m.allOnly)
+          .map(([k, m]) => `<button class="chip ${k === metric ? 'on' : ''}" data-act="lb-metric" data-k="${k}">${m.icon} ${m.name}</button>`).join('')}</div>
       </div>
-      ${note}
-      <p class="muted small">Bảng xếp hạng chỉ hiện tên gọi và con vật đại diện của bé. Số sao gồm sao trong lộ trình bài học và ${T.DAILY_BONUS} sao thưởng mỗi ngày hoàn thành Thử thách hôm nay; theo tuần/tháng là số sao đạt thêm trong kỳ đó. Ngày học liên tiếp tính những ngày bé có làm bài; kỷ lục được giữ lại kể cả khi chuỗi bị đứt.</p>`;
-    if (!Cloud.enabled) { document.getElementById('lb-list').innerHTML = '<p class="muted center-text">Bảng xếp hạng cần bật tài khoản (Firebase).</p>'; return; }
+      <div id="lb-list" class="rank-body"><div class="rank-empty"><div class="spin">⭐</div><p>Đang tải bảng xếp hạng...</p></div></div>
+      ${note ? `<p class="rank-note">${note}</p>` : ''}
+      <p class="rank-foot">Bảng xếp hạng chỉ hiện tên gọi và con vật đại diện của bé. Số sao gồm sao trong lộ trình bài học và ${T.DAILY_BONUS} sao thưởng mỗi ngày hoàn thành Thử thách hôm nay; theo tuần/tháng là số sao đạt thêm trong kỳ đó. Kỷ lục ngày học liên tiếp được giữ lại kể cả khi chuỗi bị đứt.</p>`;
+    if (!Cloud.enabled) { document.getElementById('lb-list').innerHTML = '<div class="rank-empty"><div class="big-ico">🔒</div><p>Bảng xếp hạng cần bật tài khoản (Firebase).</p></div>'; return; }
     loadRank(++lbToken);
   }
 
@@ -951,22 +952,44 @@ ${todayDone ? dailyCard : ''}
     try { await Cloud.flush(); rows = await Cloud.fetchLeaderboard(field); } catch (e) { err = e.message; }
     const box = document.getElementById('lb-list');
     if (token !== lbToken || !box) return; // người dùng đã chuyển tab
-    if (err) { box.innerHTML = `<p class="fb bad small-fb">⚠️ ${esc(err)}</p>`; return; }
+    if (err) { box.innerHTML = `<div class="rank-empty"><div class="big-ico">⚠️</div><p>${esc(err)}</p></div>`; return; }
     const mine = r => Cloud.user && r.uid === Cloud.user.uid;
     const cur = r => Cloud.kid && mine(r) && r.kidId === Cloud.kid.id;
-    const medal = i => ['🥇', '🥈', '🥉'][i] || `<span class="lb-n">${i + 1}</span>`;
-    let html = rows.length ? `<ol class="lb">${rows.map((r, i) => `
-      <li class="${cur(r) ? 'me' : mine(r) ? 'ours' : ''} ${i < 3 ? 'top' : ''}">
-        <span class="lb-rank">${medal(i)}</span><span class="lb-av">${esc(r.avatar || '🙂')}</span>
-        <span class="lb-name">${esc(r.nickname)}${cur(r) ? ' <small>(con)</small>' : mine(r) ? ' <small>(nhà mình)</small>' : ''}</span>
-        <b class="lb-val">${r[field]} <small>${M.unit}</small></b>
-      </li>`).join('')}</ol>` : `<p class="muted center-text">Chưa có ai trên bảng ${period === 'all' ? '' : lbPeriodLabel(period).toLowerCase() + ' '}. Hãy là người đầu tiên! 🚀</p>`;
-    // Bé đang học nhưng chưa vào top: cho biết số của bé
-    if (Cloud.user && Cloud.kid && Cloud.kid.onLeaderboard !== false && !rows.some(cur)) {
-      const v = Cloud.lbEntryFor(Cloud.kid, Store.data)[field] || 0;
-      html += `<p class="lb-mine">${esc(Cloud.kid.avatar || '')} <b>${esc(Cloud.kid.nickname)}</b>: ${v} ${M.unit}${v ? ' – chưa vào top 50, cố lên nhé! 💪' : ' – học thêm để lên bảng nhé! 💪'}</p>`;
+    const tag = r => cur(r) ? '<span class="rk-tag me">Con</span>' : mine(r) ? '<span class="rk-tag">Nhà mình</span>' : '';
+    const val = r => `<b>${r[field]}</b> <small>${M.unit}</small>`;
+    if (!rows.length) {
+      box.innerHTML = `<div class="rank-empty"><div class="big-ico">🚀</div><p>Chưa có ai trên bảng ${period === 'all' ? 'này' : lbPeriodLabel(period).toLowerCase()}.<br><b>Hãy là người đầu tiên!</b></p></div>`;
+    } else {
+      // Bục vinh quang: hạng 2 – hạng 1 – hạng 3
+      const podium = [1, 0, 2].filter(i => rows[i]).map(i => {
+        const r = rows[i];
+        return `<div class="pod pod-${i + 1} ${cur(r) ? 'me' : mine(r) ? 'ours' : ''}" data-rank="${i + 1}">
+          ${i === 0 ? '<div class="crown">👑</div>' : ''}
+          <div class="pod-av">${esc(r.avatar || '🙂')}</div>
+          <div class="pod-name">${esc(r.nickname)}</div>${tag(r)}
+          <div class="pod-val">${val(r)}</div>
+          <div class="pod-step"><span>${['🥇', '🥈', '🥉'][i]}</span></div>
+        </div>`;
+      }).join('');
+      const rest = rows.slice(3).map((r, j) => `
+        <li class="${cur(r) ? 'me' : mine(r) ? 'ours' : ''}" data-rank="${j + 4}">
+          <span class="rk-n">${j + 4}</span><span class="rk-av">${esc(r.avatar || '🙂')}</span>
+          <span class="rk-name">${esc(r.nickname)}${tag(r)}</span><span class="rk-val">${val(r)}</span>
+        </li>`).join('');
+      box.innerHTML = `<div class="podium">${podium}</div>${rest ? `<ol class="rk-list">${rest}</ol>` : ''}`;
     }
-    box.innerHTML = html;
+    // Thứ hạng của bé đang học
+    if (Cloud.user && Cloud.kid && Cloud.kid.onLeaderboard !== false) {
+      const idx = rows.findIndex(cur);
+      const v = idx >= 0 ? rows[idx][field] : (Cloud.lbEntryFor(Cloud.kid, Store.data)[field] || 0);
+      const msg = idx === 0 ? 'Con đang dẫn đầu! Giữ vững nhé! 👑' : idx > 0 ? `Cố thêm chút nữa để vượt lên hạng ${idx}! 💪` : v ? 'Chưa vào top 50, cố lên nhé! 💪' : 'Học thêm để lên bảng nhé! 💪';
+      box.insertAdjacentHTML('beforeend', `<div class="rank-me">
+        <span class="rm-av">${esc(Cloud.kid.avatar || '🙂')}</span>
+        <div class="rm-text"><b>${esc(Cloud.kid.nickname)}</b><small>${msg}</small></div>
+        <div class="rm-stat"><span>Hạng</span><b>${idx >= 0 ? idx + 1 : '–'}</b></div>
+        <div class="rm-stat"><span>${M.name}</span><b>${v}</b></div>
+      </div>`);
+    }
   }
 
   // Khi trạng thái tài khoản thay đổi: cập nhật góc trên và vẽ lại trang (trừ khi bé đang làm bài)
