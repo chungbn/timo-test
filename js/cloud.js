@@ -16,7 +16,10 @@
   const Cloud = T.Cloud = {
     enabled: !!cfg,
     ready: false,   // đã biết trạng thái đăng nhập
+    loading: false, // đang tải dữ liệu của tài khoản vừa đăng nhập
     user: null,
+    parent: {},     // users/{uid}: { pinHash, ... }
+    justSignedIn: false, // vừa đăng nhập bằng mật khẩu/Google: coi như phụ huynh đang cầm máy
     kids: [],
     kid: null,      // hồ sơ bé đang học
     subscribe(fn) { listeners.push(fn); },
@@ -67,16 +70,22 @@
       emitChange();
       return;
     }
-    auth.getRedirectResult().catch(e => { Cloud.lastError = errorText(e); emitChange(); });
+    auth.getRedirectResult().then(r => { if (r && r.user) Cloud.justSignedIn = true; }, e => { Cloud.lastError = errorText(e); emitChange(); });
     auth.onAuthStateChanged(async user => {
       Cloud.user = user;
+      // Đang tải dữ liệu phụ huynh (mã PIN, hồ sơ các bé): giao diện chờ, tránh ghi đè lẫn nhau
+      Cloud.loading = !!user;
+      if (user) emitChange();
       if (!user) {
         Cloud.kids = [];
+        Cloud.parent = {};
         useGuest();
         localStorage.removeItem(PROFILE_KEY);
       } else {
         try {
-          await db.collection('users').doc(user.uid).set({ email: user.email || '', name: user.displayName || '', lastLogin: now() }, { merge: true });
+          const uref = db.collection('users').doc(user.uid);
+          await uref.set({ email: user.email || '', name: user.displayName || '', lastLogin: now() }, { merge: true });
+          Cloud.parent = (await uref.get()).data() || {};
           await Cloud.refreshKids();
           const prof = readProfile();
           const kid = prof && prof.uid === user.uid && Cloud.kids.find(k => k.id === prof.kidId);
@@ -84,6 +93,7 @@
           else { Cloud.kid = null; Store.use(Store.GUEST_KEY); }
         } catch (e) { console.error(e); Cloud.lastError = errorText(e); }
       }
+      Cloud.loading = false;
       Cloud.ready = true;
       emitChange();
     });
@@ -96,18 +106,44 @@
   // ---------------- đăng nhập ----------------
   Cloud.signInGoogle = async function () {
     const provider = new firebase.auth.GoogleAuthProvider();
-    try { await auth.signInWithPopup(provider); }
+    try { await auth.signInWithPopup(provider); Cloud.justSignedIn = true; }
     catch (e) {
       if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return auth.signInWithRedirect(provider);
       throw new Error(errorText(e));
     }
   };
-  Cloud.signInEmail = async (email, pass) => { try { await auth.signInWithEmailAndPassword(email, pass); } catch (e) { throw new Error(errorText(e)); } };
-  Cloud.signUpEmail = async (email, pass) => { try { await auth.createUserWithEmailAndPassword(email, pass); } catch (e) { throw new Error(errorText(e)); } };
+  Cloud.signInEmail = async (email, pass) => { try { await auth.signInWithEmailAndPassword(email, pass); Cloud.justSignedIn = true; } catch (e) { throw new Error(errorText(e)); } };
+  Cloud.signUpEmail = async (email, pass) => { try { await auth.createUserWithEmailAndPassword(email, pass); Cloud.justSignedIn = true; } catch (e) { throw new Error(errorText(e)); } };
   Cloud.resetPassword = async email => { try { await auth.sendPasswordResetEmail(email); } catch (e) { throw new Error(errorText(e)); } };
+  // ---------------- mã PIN phụ huynh ----------------
+  // PIN 4 số khóa khu vực phụ huynh để bé không tự xóa dữ liệu. Lưu dạng băm SHA-256 (kèm uid) trong users/{uid}.
+  async function hashPin(pin) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`timo-pin:${Cloud.user.uid}:${pin}`));
+    return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+  Cloud.hasPin = () => !!(Cloud.parent && Cloud.parent.pinHash);
+  Cloud.checkPin = async pin => Cloud.hasPin() && (await hashPin(pin)) === Cloud.parent.pinHash;
+  Cloud.setPin = async function (pin) {
+    const pinHash = await hashPin(pin);
+    await db.collection('users').doc(Cloud.user.uid).set({ pinHash, pinUpdatedAt: now() }, { merge: true });
+    Cloud.parent = Object.assign({}, Cloud.parent, { pinHash });
+  };
+  // Tài khoản đăng nhập bằng mật khẩu hay Google (để xác nhận lại khi quên PIN)
+  Cloud.usesPassword = () => !!(auth.currentUser && auth.currentUser.providerData.some(p => p.providerId === 'password'));
+  Cloud.reauth = async function (password) {
+    const u = auth.currentUser;
+    try {
+      if (Cloud.usesPassword()) await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, password));
+      else await u.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
+    } catch (e) {
+      throw new Error(e.code === 'auth/user-mismatch' ? 'Vui lòng chọn đúng tài khoản Google đang đăng nhập.' : errorText(e));
+    }
+  };
+
   Cloud.signOut = async function () {
     await Cloud.flush();
     localStorage.removeItem(PROFILE_KEY);
+    Cloud.justSignedIn = false;
     await auth.signOut();
   };
 
@@ -175,6 +211,19 @@
       const p = readProfile();
       if (p) localStorage.setItem(PROFILE_KEY, JSON.stringify(Object.assign(p, { nickname, avatar })));
     }
+    emitChange();
+  };
+
+  // Xóa toàn bộ tiến độ học tập của một bé (giữ lại hồ sơ)
+  Cloud.resetKid = async function (id) {
+    if (Cloud.kid && Cloud.kid.id === id) { Store.reset(); dirty = false; }
+    else {
+      await kidRef(id).update({ progress: progressOf(Store.blank()), updatedAt: now() });
+      await deleteAllMistakes(kidRef(id));
+      try { localStorage.removeItem(cacheKey(Cloud.user.uid, id)); } catch (e) { /* bỏ qua */ }
+    }
+    const k = Cloud.kids.find(x => x.id === id);
+    if (k) k.progress = progressOf(Store.blank());
     emitChange();
   };
 
