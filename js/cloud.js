@@ -268,6 +268,7 @@
       'auth/cancelled-popup-request': 'Cửa sổ đăng nhập đã bị đóng.',
       'auth/network-request-failed': 'Không có kết nối mạng.',
       'auth/unauthorized-domain': 'Tên miền này chưa được cho phép trong Firebase (Authentication → Settings → Authorized domains).',
+      'auth/configuration-not-found': 'Firebase Authentication chưa được bật (Authentication → Get started, rồi bật Google và Email/Password).',
       'auth/operation-not-allowed': 'Cách đăng nhập này chưa được bật trong Firebase (Authentication → Sign-in method).',
       'permission-denied': 'Không có quyền truy cập dữ liệu. Kiểm tra lại Firestore Rules.',
     };
