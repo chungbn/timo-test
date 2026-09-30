@@ -5,7 +5,7 @@ Hoặc chạy server tĩnh: `python3 -m http.server 8000` rồi vào http://loca
 
 ## Tính năng
 - **5 chủ đề TIMO**: Tư duy logic, Số học, Lý thuyết số, Hình học, Tổ hợp. Mỗi chủ đề có kiến thức cần nhớ, mẹo và ví dụ mẫu.
-- **Lộ trình 12 bài mỗi chủ đề** (5 câu/bài, tối đa 3 sao/bài): bắt đầu từ mức *Làm quen* (rất dễ, có hình minh họa) rồi tăng dần lên Cấp 1, 2, 3. Chấm ngay, có lời giải.
+- **Lộ trình 24 bài mỗi chủ đề** (5 câu/bài, tối đa 3 sao/bài): 4 bài *Làm quen* (rất dễ, có hình minh họa), rồi tăng chậm lên Cấp 1, 2, 3 — mỗi bài chuyển tiếp chỉ thêm 1 câu khó hơn. Chấm ngay, có lời giải.
 - **Thi thử**: 90 đề cố định (30 đề Chuẩn, 30 đề Nâng cao, 30 đề Nhanh) và đề ngẫu nhiên. Có đồng hồ đếm ngược, bảng câu hỏi, đánh dấu câu, chấm điểm, xếp huy chương và xem lại lời giải.
 - **Thử thách hôm nay**: hoàn thành 10 câu được thưởng **20 sao** (mỗi ngày một lần; thẻ quà hiện ngay đầu trang chủ khi chưa nhận). Sao thưởng tính vào tổng sao và bảng xếp hạng.
 - **Luyện tổng hợp**, **Tính nhẩm 60 giây**.

@@ -17,7 +17,21 @@
 
   // Nhật ký theo ngày mới có từ khi thêm bảng xếp hạng. Sao và số câu làm trước đó (chưa có ngày) được tính
   // một lần vào ngày đầu tiên chạy bản mới, để bảng tuần/tháng không bỏ sót. logsSince đánh dấu đã làm việc này.
+  // Lộ trình 12 bài cũ ("chủ-đề-L{n}") → 24 bài ("chủ-đề-B{2n−1}"). Giữ lại khóa cũ và lấy số lớn hơn,
+  // nên chạy lại nhiều lần hoặc gộp với máy chưa cập nhật đều không cộng trùng.
+  function migrateLessons(d) {
+    let changed = false;
+    for (const [k, v] of Object.entries(d.stars)) {
+      const m = /^(\w+)-L(\d+)$/.exec(k);
+      if (!m) continue;
+      const nk = T.lessonKey(m[1], 2 * m[2] - 1);
+      if ((d.stars[nk] || 0) < v) { d.stars[nk] = v; changed = true; }
+    }
+    return changed;
+  }
+
   function migrateLogs(d) {
+    migrateLessons(d);
     if (d.logsSince) return false;
     const totalDone = Object.values(d.stats).reduce((a, s) => a + (s.done || 0), 0), total = lessonStars(d);
     // Chưa có gì (ví dụ bản lưu trống trên máy trước khi tải dữ liệu từ mạng): chưa đánh dấu, để lần sau xét lại
@@ -46,7 +60,7 @@
   // Sao = sao lộ trình bài học + sao thưởng (mỗi ngày hoàn thành Thử thách hôm nay được T.DAILY_BONUS sao).
   // Sao thưởng tính từ danh sách ngày đã hoàn thành (d.daily) nên đồng bộ nhiều máy không bị cộng trùng.
   T.DAILY_BONUS = 20;
-  const lessonStars = d => Object.entries(d.stars).filter(([k]) => /-L\d+$/.test(k)).reduce((a, [, v]) => a + v, 0);
+  const lessonStars = d => Object.entries(d.stars).filter(([k]) => T.LESSON_KEY_RE.test(k)).reduce((a, [, v]) => a + v, 0);
   const bonusStars = (d, period) => {
     const days = Object.keys(d.daily || {});
     return T.DAILY_BONUS * (period ? T.periodSum(Object.fromEntries(days.map(k => [k, 1])), period) : days.length);
@@ -113,7 +127,7 @@
     use(newKey, newData) {
       key = newKey;
       data = Object.assign(blank(), newData || read(newKey));
-      const migrated = migrateLogs(data);
+      const migrated = migrateLessons(data) | migrateLogs(data);
       try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { /* bỏ qua */ }
       return migrated;
     },
@@ -130,7 +144,7 @@
       const old = data.stars[k] || 0;
       if (n <= old) return;
       data.stars[k] = n;
-      if (/-L\d+$/.test(k)) addLog(data.starLog, n - old); // chỉ tính sao của lộ trình bài học
+      if (T.LESSON_KEY_RE.test(k)) addLog(data.starLog, n - old); // chỉ tính sao của lộ trình bài học
       save('progress');
     },
     stars(k) { return data.stars[k] || 0; },

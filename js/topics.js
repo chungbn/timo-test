@@ -116,46 +116,58 @@
   ];
   T.levelName = lv => T.LEVELS[lv].name;
 
-  // Mỗi chủ đề có 12 bài, mỗi bài 5 câu. Độ khó tăng dần theo RAMP (cấp độ của từng câu trong bài).
+  // Mỗi chủ đề có 24 bài, mỗi bài 5 câu. Độ khó tăng chậm theo RAMP (cấp độ của từng câu trong bài):
+  // 4 bài Làm quen → 3 bài chuyển dần lên Cấp 1 → 5 bài Cấp 1 → 4 bài chuyển dần lên Cấp 2 → 3 bài Cấp 2 → 5 bài lên Cấp 3.
   T.LESSON_SIZE = 5;
   T.RAMP = [
-    [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 1, 1],
-    [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 2, 2],
-    [1, 2, 2, 2, 2], [2, 2, 2, 2, 3], [2, 2, 3, 3, 3], [3, 3, 3, 3, 3],
+    [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 1], [0, 0, 0, 1, 1], [0, 0, 1, 1, 1],
+    [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 2], [1, 1, 1, 2, 2], [1, 1, 2, 2, 2], [1, 2, 2, 2, 2],
+    [2, 2, 2, 2, 2], [2, 2, 2, 2, 2], [2, 2, 2, 2, 2],
+    [2, 2, 2, 2, 3], [2, 2, 2, 3, 3], [2, 2, 3, 3, 3], [2, 3, 3, 3, 3], [3, 3, 3, 3, 3],
   ];
-  // Tên bài và dạng bài tập trung (f = null: trộn mọi dạng của cấp độ đó)
-  const tail = [
-    { t: 'Ôn tập làm quen', f: null }, { t: 'Bước lên cấp 1', f: null },
-  ];
-  const end = [
-    { t: 'Tổng hợp cấp 1', f: null }, { t: 'Bước lên cấp 2', f: null }, { t: 'Mức đề thi', f: null },
-    { t: 'Thử thách', f: null }, { t: 'Về đích 🏁', f: null },
-  ];
+  // Tên bài và dạng bài tập trung (f = null: trộn mọi dạng của cấp độ đó).
+  // Mỗi chủ đề khai báo 3 bài Làm quen, 4 bài Cấp 1, 2 bài Cấp 2 theo dạng; các bài còn lại là bài ôn/trộn chung.
+  function path(lv0, lv1, lv2) {
+    const mix = t => ({ t, f: null });
+    return [
+      ...lv0, mix('Ôn tập làm quen'),
+      mix('Khởi động 1'), mix('Khởi động 2'), mix('Khởi động 3'),
+      ...lv1, mix('Ôn tập cấp 1'),
+      mix('Tăng tốc 1'), mix('Tăng tốc 2'), mix('Tăng tốc 3'), mix('Tăng tốc 4'),
+      ...lv2, mix('Mức đề thi'),
+      mix('Thử thách 1'), mix('Thử thách 2'), mix('Thử thách 3'), mix('Thử thách 4'), mix('Về đích 🏁'),
+    ];
+  }
+  const L_ = (t, ...f) => ({ t, f });
   const LESSONS = {
-    logic: [
-      { t: 'Tìm quy luật đơn giản', f: ['seq0', 'pattern0', 'odd0'] }, { t: 'So sánh và vị trí', f: ['compare0', 'position0'] }, ...tail,
-      { t: 'Dãy số, dãy hình', f: ['seq', 'pattern'] }, { t: 'Xếp hàng, so sánh', f: ['queue', 'compare'] }, { t: 'Cân đồ vật, tuổi, cưa gỗ', f: ['exchange', 'age', 'cut'] }, ...end,
-    ],
-    arith: [
-      { t: 'Đếm và cộng trừ bằng hình', f: ['count0', 'addpic0', 'subpic0'] }, { t: 'Cộng trừ trong phạm vi 5', f: ['calc0', 'cmp0'] }, ...tail,
-      { t: 'Cộng trừ, tìm số', f: ['calc', 'missing'] }, { t: 'Toán có lời văn, so sánh', f: ['word', 'compare'] }, { t: 'Tính nhanh, con vật bí ẩn', f: ['quick', 'symbols'] }, ...end,
-    ],
-    number: [
-      { t: 'Thứ tự các số', f: ['next0', 'between0', 'biggest0'] }, { t: 'Chẵn lẻ, chục và đơn vị', f: ['evenodd0', 'tens0'] }, ...tail,
-      { t: 'Chục, đơn vị, số liền nhau', f: ['place', 'neighbor', 'special'] }, { t: 'Chẵn lẻ, đếm số', f: ['evenodd', 'count'] }, { t: 'Sắp xếp, lập số', f: ['order', 'fromdigits'] }, ...end,
-    ],
-    geo: [
-      { t: 'Nhận biết hình', f: ['shapename0', 'sides0'] }, { t: 'Đếm hình, xem giờ', f: ['shapes0', 'cells0', 'clock'] }, ...tail,
-      { t: 'Đếm hình, đếm ô vuông', f: ['shapes', 'grid', 'bars'] }, { t: 'Đoạn thẳng, tam giác, hình chữ nhật', f: ['segments', 'fan', 'strip'] }, { t: 'Xem đồng hồ, ghép hình', f: ['clock', 'bars'] }, ...end,
-    ],
-    comb: [
-      { t: 'Có mấy cách chọn?', f: ['pickone0', 'or0'] }, { t: 'Chọn đồ, chia kẹo', f: ['outfit0', 'choose0', 'share0'] }, ...tail,
-      { t: 'Chọn quần áo, tìm đường', f: ['outfit', 'roads'] }, { t: 'Bắt tay, tách số', f: ['handshake', 'split'] }, { t: 'Lập số, lấy bi', f: ['digits', 'pigeon'] }, ...end,
-    ],
+    logic: path(
+      [L_('Đếm tiếp dãy số', 'seq0'), L_('Hình lặp lại, hình khác loại', 'pattern0', 'odd0'), L_('So sánh và vị trí', 'compare0', 'position0')],
+      [L_('Dãy số, dãy hình', 'seq', 'pattern'), L_('Xếp hàng, so sánh', 'queue', 'compare'), L_('Cân đồ vật, tính tuổi', 'exchange', 'age'), L_('Cưa gỗ, trồng cây, xếp hàng', 'cut', 'queue')],
+      [L_('Quy luật nâng cao', 'seq', 'pattern', 'compare'), L_('Suy luận nâng cao', 'queue', 'exchange', 'age', 'cut')]),
+    arith: path(
+      [L_('Đếm hình', 'count0'), L_('Cộng trừ bằng hình', 'addpic0', 'subpic0'), L_('Cộng trừ trong phạm vi 5', 'calc0', 'cmp0')],
+      [L_('Cộng trừ, so sánh', 'calc', 'compare'), L_('Tìm số trong ô trống', 'missing'), L_('Toán có lời văn', 'word'), L_('Tính nhanh, con vật bí ẩn', 'quick', 'symbols')],
+      [L_('Tính toán nâng cao', 'calc', 'missing', 'compare', 'count'), L_('Lời văn, tính nhanh nâng cao', 'word', 'quick', 'symbols')]),
+    number: path(
+      [L_('Số liền trước, liền sau', 'next0', 'between0'), L_('So sánh các số', 'biggest0', 'between0'), L_('Chẵn lẻ, chục và đơn vị', 'evenodd0', 'tens0')],
+      [L_('Chục, đơn vị, số liền nhau', 'place', 'neighbor'), L_('Chẵn lẻ, đếm số', 'evenodd', 'count'), L_('Sắp xếp, số đặc biệt', 'order', 'special'), L_('Lập số từ chữ số', 'fromdigits', 'place')],
+      [L_('Chữ số và cách viết số', 'digitsum', 'write', 'fromdigits'), L_('Suy luận về số', 'evenodd', 'count', 'neighbor', 'order', 'special')]),
+    geo: path(
+      [L_('Nhận biết hình', 'shapename0'), L_('Cạnh, góc, đếm hình', 'sides0', 'shapes0'), L_('Ô vuông, xem giờ', 'cells0', 'clock')],
+      [L_('Đếm hình, đếm ô vuông', 'shapes', 'grid'), L_('Đoạn thẳng, hình chữ nhật', 'segments', 'strip'), L_('Đếm tam giác', 'fan'), L_('Xem đồng hồ, ghép hình', 'clock', 'bars')],
+      [L_('Đoạn thẳng, tam giác nâng cao', 'segments', 'fan', 'diag'), L_('Hình vuông, hình chữ nhật nâng cao', 'grid', 'strip', 'bars', 'clock', 'shapes')]),
+    comb: path(
+      [L_('Có mấy cách chọn?', 'pickone0', 'or0'), L_('Chọn quần áo, chọn quả', 'outfit0', 'choose0'), L_('Chia kẹo', 'share0', 'pickone0')],
+      [L_('Chọn quần áo, tìm đường', 'outfit', 'roads'), L_('Bắt tay, thi đấu', 'handshake'), L_('Tách số, lập số', 'split', 'digits'), L_('Lấy bi chắc chắn', 'pigeon')],
+      [L_('Đếm cách nâng cao', 'handshake', 'outfit', 'roads', 'coins'), L_('Lập số, trường hợp xấu nhất', 'digits', 'pigeon', 'split')]),
   };
   T.lessons = topic => LESSONS[topic].map((L, i) => Object.assign({ n: i + 1, levels: T.RAMP[i] }, L));
   T.LESSON_COUNT = T.RAMP.length;
-  T.lessonKey = (topic, n) => `${topic}-L${n}`;
+  // Khóa sao của bài học. Lộ trình 12 bài cũ dùng "-L{n}"; lộ trình 24 bài dùng "-B{n}" (bài cũ n ≈ bài mới 2n−1).
+  T.lessonKey = (topic, n) => `${topic}-B${n}`;
+  T.LESSON_KEY_RE = /-B\d+$/;
 
   T.EXAM_MODES = {
     full: { name: 'Thi thử TIMO', short: 'Chuẩn', per: 5, levels: [1, 1, 2, 2, 3], minutes: 90, desc: '25 câu · 90 phút · giống đề thi thật' },
