@@ -40,6 +40,7 @@
   const progressOf = d => ({
     stats: d.stats, stars: d.stars, exams: d.exams, best: d.best, speedBest: d.speedBest, daily: d.daily,
     starLog: d.starLog || {}, doneLog: d.doneLog || {}, bestStreak: d.bestStreak || 0, bestExam: d.bestExam || 0,
+    logsSince: d.logsSince || null,
   });
   const readProfile = () => { try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'); } catch (e) { return null; } };
 
@@ -168,10 +169,11 @@
     const merged = Store.merge(local, kid.progress || {});
     // Sổ tay lỗi sai: Firestore là nguồn chính (đã gồm cả thay đổi chờ gửi khi offline)
     merged.mistakes = ms.docs.map(d => d.data()).sort((a, b) => b.at - a.at).slice(0, 80);
-    Store.use(cacheKey(uid, id), merged);
+    const migrated = Store.use(cacheKey(uid, id), merged);
     Cloud.kid = kid;
     localStorage.setItem(PROFILE_KEY, JSON.stringify({ uid, kidId: id, nickname: kid.nickname, avatar: kid.avatar }));
-    writeLeaderboard(kid, merged); // cập nhật kỳ tuần/tháng mới và dữ liệu cũ chưa có trên bảng
+    if (migrated) { dirty = true; schedule(800); } // gửi nhật ký vừa bổ sung lên mạng (kèm bảng xếp hạng)
+    else writeLeaderboard(kid, Store.data); // cập nhật kỳ tuần/tháng mới
     emitChange();
   };
 

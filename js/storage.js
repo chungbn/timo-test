@@ -13,6 +13,22 @@
     for (const k of Object.keys(log)) if (k < min) delete log[k];
   }
   const addLog = (log, n) => { const k = T.today(); log[k] = (log[k] || 0) + n; pruneLog(log); };
+  const sumLog = log => Object.values(log || {}).reduce((a, v) => a + v, 0);
+
+  // Nhật ký theo ngày mới có từ khi thêm bảng xếp hạng. Sao và số câu làm trước đó (chưa có ngày) được tính
+  // một lần vào ngày đầu tiên chạy bản mới, để bảng tuần/tháng không bỏ sót. logsSince đánh dấu đã làm việc này.
+  function migrateLogs(d) {
+    if (d.logsSince) return false;
+    const totalDone = Object.values(d.stats).reduce((a, s) => a + (s.done || 0), 0), total = lessonStars(d);
+    // Chưa có gì (ví dụ bản lưu trống trên máy trước khi tải dữ liệu từ mạng): chưa đánh dấu, để lần sau xét lại
+    if (!totalDone && !total) return false;
+    d.logsSince = T.today();
+    const done = totalDone - sumLog(d.doneLog);
+    const stars = total - sumLog(d.starLog);
+    if (done > 0) d.doneLog[d.logsSince] = (d.doneLog[d.logsSince] || 0) + done;
+    if (stars > 0) d.starLog[d.logsSince] = (d.starLog[d.logsSince] || 0) + stars;
+    return true;
+  }
   const qKey = q => T.hashStr(q.text + '|' + q.visual + '|' + q.answer);
 
   function read(key) {
@@ -80,19 +96,26 @@
       // Nhật ký theo ngày lấy số lớn hơn (gộp nhiều lần vẫn không bị cộng trùng)
       starLog: maxMap(a.starLog, b.starLog), doneLog: maxMap(a.doneLog, b.doneLog),
       bestStreak: Math.max(a.bestStreak || 0, b.bestStreak || 0), bestExam: Math.max(bestExam(a), bestExam(b)),
+      logsSince: [a.logsSince, b.logsSince].filter(Boolean).sort()[0] || null,
     };
   }
+
+  // Dữ liệu cũ trên máy (khách): bổ sung nhật ký một lần
+  if (migrateLogs(data)) { try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { /* bỏ qua */ } }
 
   T.Store = {
     GUEST_KEY, blank, read, merge, bestStreakOf: bestStreak, bestExamOf: bestExam,
     onChange: null, // (kind, payload) => void — cloud.js gán vào
     get data() { return data; },
     get key() { return key; },
-    // Chuyển sang hồ sơ khác (khách hoặc một bé); không phát sự kiện đồng bộ
+    // Chuyển sang hồ sơ khác (khách hoặc một bé); không phát sự kiện đồng bộ.
+    // Trả về true nếu vừa bổ sung nhật ký cho dữ liệu cũ (cần gửi lên mạng).
     use(newKey, newData) {
       key = newKey;
       data = Object.assign(blank(), newData || read(newKey));
+      const migrated = migrateLogs(data);
       try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { /* bỏ qua */ }
+      return migrated;
     },
     isEmpty(d) { d = d || data; return !Object.keys(d.stats).length && !Object.keys(d.stars).length && !d.exams.length && !d.mistakes.length && !d.speedBest; },
 
