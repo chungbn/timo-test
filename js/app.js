@@ -126,7 +126,7 @@
     $app.innerHTML = `
     <section class="hero">
       <div class="hero-text">
-        <h1>Chinh phục <span>TIMO</span> lớp 1 🦉</h1>
+        <h1>${Cloud.kid ? `Chào ${esc(Cloud.kid.nickname)} ${esc(Cloud.kid.avatar || '')}!` : 'Chinh phục <span>TIMO</span> lớp 1 🦉'}</h1>
         <p>Học theo 5 chủ đề của kỳ thi Olympic Toán Quốc tế TIMO: Tư duy logic, Số học, Lý thuyết số, Hình học và Tổ hợp. Mỗi lần luyện là một bộ câu hỏi mới!</p>
         <div class="hero-stats">
           <div><b>${Store.totalStars()}</b><span>⭐ sao</span></div>
@@ -574,6 +574,189 @@
     <div class="actions"><button class="btn danger" data-act="reset">🗑 Xóa toàn bộ dữ liệu học tập</button></div>`;
   }
 
+  // ---------------- TÀI KHOẢN ----------------
+  const Cloud = T.Cloud;
+  const AVATARS = ['🐰', '🐯', '🐼', '🦊', '🐻', '🐱', '🐶', '🐸', '🐵', '🦁', '🐨', '🐧', '🦄', '🐙', '🐢', '🦖'];
+  let acct = { form: null, msg: '', err: '', busy: false, guestChosen: false, emailMode: 'login', email: '', pass: '' };
+
+  function renderAccountChip() {
+    const el = document.getElementById('acct');
+    if (!el) return;
+    if (!Cloud.enabled) { el.innerHTML = ''; return; }
+    if (Cloud.kid) el.innerHTML = `<a href="#/account" class="acct-chip" title="Đổi hồ sơ">${esc(Cloud.kid.avatar || '🙂')} ${esc(Cloud.kid.nickname || '')}</a>`;
+    else if (!Cloud.ready) el.innerHTML = '';
+    else if (Cloud.user) el.innerHTML = '<a href="#/account" class="acct-chip">👤 Chọn hồ sơ</a>';
+    else el.innerHTML = '<a href="#/account" class="acct-chip login">Đăng nhập</a>';
+  }
+
+  async function acctRun(fn, okMsg) {
+    acct.busy = true; acct.err = ''; acct.msg = ''; renderAccount();
+    try { await fn(); acct.msg = okMsg || ''; }
+    catch (e) { acct.err = e.message || String(e); }
+    acct.busy = false;
+    if (document.body.dataset.view === 'account') renderAccount();
+  }
+
+  function renderAccount() {
+    const alerts = `${acct.err ? `<div class="fb bad small-fb">⚠️ ${esc(acct.err)}</div>` : ''}${acct.msg ? `<div class="fb ok small-fb">✅ ${esc(acct.msg)}</div>` : ''}`;
+    if (!Cloud.enabled) {
+      $app.innerHTML = `<a href="#/" class="back">← Trang chủ</a>
+      <div class="result-card intro"><div class="ico big">🔒</div><h1>Tài khoản chưa được bật</h1>
+      <p>Web đang chạy ở chế độ khách: tiến độ được lưu trên trình duyệt này. Người quản trị cần điền cấu hình Firebase vào <code>js/firebase-config.js</code> (xem hướng dẫn trong <code>README.md</code>).</p></div>`;
+      return;
+    }
+    if (!Cloud.ready) { $app.innerHTML = '<div class="result-card"><div class="ico big">⏳</div><h2>Đang tải tài khoản...</h2></div>'; return; }
+    const dis = acct.busy ? 'disabled' : '';
+
+    if (Cloud.user) acct.pass = '';
+    if (!Cloud.user) {
+      const signup = acct.emailMode === 'signup';
+      $app.innerHTML = `<a href="#/" class="back">← Trang chủ</a>
+      <div class="result-card intro auth-card">
+        <div class="ico big">👨‍👩‍👧</div>
+        <h1>Tài khoản phụ huynh</h1>
+        <p class="muted center-text">Đăng nhập để lưu tiến độ của các bé lên mạng, học tiếp trên mọi thiết bị và xem báo cáo học tập. Mỗi tài khoản có thể tạo nhiều hồ sơ cho các bé.</p>
+        ${alerts}
+        <button class="btn google" data-act="ac-google" ${dis}><span class="g">G</span> Đăng nhập bằng Google</button>
+        <div class="or"><span>hoặc dùng email</span></div>
+        <form class="auth-form" onsubmit="return false">
+          <label>Email<input id="ac-email" type="email" autocomplete="email" value="${esc(acct.email)}" required></label>
+          <label>Mật khẩu<input id="ac-pass" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" minlength="6" value="${esc(acct.pass)}" required></label>
+          <button class="btn primary" id="primary" data-act="${signup ? 'ac-signup' : 'ac-login'}" ${dis}>${signup ? 'Tạo tài khoản' : 'Đăng nhập'}</button>
+        </form>
+        <p class="center-text small">
+          ${signup ? 'Đã có tài khoản? <a href="javascript:void 0" data-act="ac-mode" data-m="login">Đăng nhập</a>' : 'Chưa có tài khoản? <a href="javascript:void 0" data-act="ac-mode" data-m="signup">Tạo tài khoản mới</a> · <a href="javascript:void 0" data-act="ac-forgot">Quên mật khẩu?</a>'}
+        </p>
+        <p class="muted center-text small">Không đăng nhập vẫn học được bình thường, tiến độ chỉ lưu trên máy này.</p>
+      </div>`;
+      return;
+    }
+
+    const f = acct.form;
+    const guestHasData = !Store.isEmpty(Store.read(Store.GUEST_KEY));
+    const formHtml = f ? (() => {
+      const kid = f.id ? Cloud.kids.find(k => k.id === f.id) : null;
+      const av = f.avatar || (kid && kid.avatar) || AVATARS[Cloud.kids.length % AVATARS.length];
+      return `<div class="card flat kid-form" style="--c:#f97316">
+        <h2>${kid ? 'Sửa hồ sơ' : 'Thêm hồ sơ cho bé'}</h2>
+        <label class="lbl">Tên gọi của bé<input id="kid-name" maxlength="20" value="${esc(f.nickname != null ? f.nickname : kid ? kid.nickname : '')}" placeholder="Ví dụ: Bin, Na, Su..."></label>
+        <p class="lbl">Chọn con vật đại diện</p>
+        <div class="avatars">${AVATARS.map(a => `<button type="button" class="av ${a === av ? 'sel' : ''}" data-act="ac-av" data-a="${a}">${a}</button>`).join('')}</div>
+        ${!kid && guestHasData ? '<label class="check"><input type="checkbox" id="kid-import" checked> Chuyển tiến độ đang có trên máy này (chế độ khách) vào hồ sơ này</label>' : ''}
+        <p class="muted small">Để bảo vệ trẻ em, web chỉ lưu tên gọi và con vật đại diện, không cần họ tên hay ngày sinh.</p>
+        <div class="actions">
+          <button class="btn primary" id="primary" data-act="ac-save" ${dis}>💾 Lưu</button>
+          <button class="btn" data-act="ac-cancel">Hủy</button>
+          ${kid ? `<button class="btn danger" data-act="ac-del" data-id="${kid.id}" ${dis}>🗑 Xóa hồ sơ</button>` : ''}
+        </div>
+      </div>`;
+    })() : '';
+
+    $app.innerHTML = `<a href="#/" class="back">← Trang chủ</a>
+      <div class="acct-head">
+        <div><h1 class="page-title">${Cloud.kids.length ? 'Ai đang học đấy?' : 'Tạo hồ sơ cho bé'}</h1>
+        <p class="muted">Phụ huynh: <b>${esc(Cloud.user.email || Cloud.user.displayName || '')}</b></p></div>
+        <button class="btn small" data-act="ac-logout" ${dis}>Đăng xuất</button>
+      </div>
+      ${alerts}
+      <div class="kids">
+        ${Cloud.kids.map(k => `<button class="kid ${Cloud.kid && Cloud.kid.id === k.id ? 'cur' : ''}" data-act="ac-pick" data-id="${k.id}" ${dis}>
+          <span class="kid-av">${esc(k.avatar || '🙂')}</span><b>${esc(k.nickname)}</b><small>⭐ ${Cloud.kidSummary(k).stars} sao</small>
+          ${Cloud.kid && Cloud.kid.id === k.id ? '<span class="kid-cur">Đang học</span>' : ''}
+        </button>`).join('')}
+        ${!f || f.id ? `<button class="kid add" data-act="ac-new"><span class="kid-av">➕</span><b>Thêm bé</b></button>` : ''}
+      </div>
+      ${formHtml}
+      ${Cloud.kid ? '<p class="small"><a href="javascript:void 0" data-act="ac-guest">Học ở chế độ khách (không lưu vào hồ sơ nào)</a></p>' : ''}
+      ${Cloud.kids.length ? `<h2 class="sec-title">📊 Báo cáo cho phụ huynh</h2>
+      <div class="report">${Cloud.kids.map(k => {
+        const s = Cloud.kidSummary(k);
+        return `<div class="card flat rep" style="--c:#14b8a6">
+          <div class="rep-head"><span class="kid-av sm">${esc(k.avatar || '🙂')}</span><b>${esc(k.nickname)}</b>
+            <button class="btn small" data-act="ac-edit" data-id="${k.id}">✏️ Sửa</button></div>
+          <div class="rep-grid">
+            <div><b>${s.stars}</b><span>⭐ sao / ${TOPICS.length * T.LESSON_COUNT * 3}</span></div>
+            <div><b>${s.done}</b><span>câu đã làm</span></div>
+            <div><b>${s.pct}%</b><span>tỉ lệ đúng</span></div>
+            <div><b>${s.exams}</b><span>bài thi${s.bestExam != null ? ` · cao nhất ${s.bestExam}đ` : ''}</span></div>
+            <div><b>${s.streak}</b><span>🔥 ngày liên tiếp</span></div>
+          </div>
+          <p class="small">${s.weak ? `💡 Nên luyện thêm: <b>${s.weak.icon} ${s.weak.name}</b>. ` : ''}${s.lastExam ? `Bài thi gần nhất: ${esc(s.lastExam.title)} – <b>${s.lastExam.score} điểm</b>. ` : ''}${s.updatedAt ? `<span class="muted">Cập nhật ${s.updatedAt.toLocaleString('vi-VN')}</span>` : ''}</p>
+        </div>`;
+      }).join('')}</div>` : ''}`;
+    const nameInput = document.getElementById('kid-name');
+    if (nameInput && !acct.busy) nameInput.focus();
+  }
+
+  function acctAction(act, el) {
+    const val = id => (document.getElementById(id) || {}).value || '';
+    // Giữ lại nội dung đã gõ khi form được vẽ lại (ví dụ sau khi báo lỗi)
+    if (document.getElementById('ac-email')) { acct.email = val('ac-email').trim(); acct.pass = val('ac-pass'); }
+    switch (act) {
+      case 'ac-google': acctRun(() => Cloud.signInGoogle()); break;
+      case 'ac-login': case 'ac-signup': {
+        const email = val('ac-email').trim(), pass = val('ac-pass');
+        if (!email || !pass) { acct.err = 'Vui lòng nhập email và mật khẩu.'; renderAccount(); break; }
+        acctRun(() => act === 'ac-login' ? Cloud.signInEmail(email, pass) : Cloud.signUpEmail(email, pass));
+        break;
+      }
+      case 'ac-mode': acct.emailMode = el.dataset.m; acct.err = acct.msg = ''; renderAccount(); break;
+      case 'ac-forgot': {
+        const email = val('ac-email').trim();
+        if (!email) { acct.err = 'Nhập email vào ô Email rồi bấm "Quên mật khẩu?" lần nữa.'; renderAccount(); break; }
+        acctRun(() => Cloud.resetPassword(email), `Đã gửi email đặt lại mật khẩu tới ${email}.`);
+        break;
+      }
+      case 'ac-logout': acctRun(() => Cloud.signOut()); acct.form = null; acct.guestChosen = false; acct.pass = ''; acct.emailMode = 'login'; break;
+      case 'ac-pick':
+        acct.guestChosen = false;
+        acctRun(() => Cloud.selectKid(el.dataset.id)).then(() => { if (!acct.err) location.hash = '#/'; });
+        break;
+      case 'ac-new': acct.form = { avatar: null, nickname: null }; acct.err = acct.msg = ''; renderAccount(); break;
+      case 'ac-edit': acct.form = { id: el.dataset.id, avatar: null, nickname: null }; acct.err = acct.msg = ''; renderAccount(); window.scrollTo({ top: 0, behavior: 'smooth' }); break;
+      case 'ac-cancel': acct.form = null; renderAccount(); break;
+      case 'ac-av':
+        acct.form.avatar = el.dataset.a;
+        acct.form.nickname = val('kid-name');
+        document.querySelectorAll('.av').forEach(b => b.classList.toggle('sel', b === el));
+        break;
+      case 'ac-save': {
+        const nickname = val('kid-name').trim();
+        if (!nickname) { acct.err = 'Vui lòng nhập tên gọi của bé.'; acct.form.nickname = ''; renderAccount(); break; }
+        const f = acct.form, kid = f.id && Cloud.kids.find(k => k.id === f.id);
+        const avatar = f.avatar || (kid && kid.avatar) || document.querySelector('.av.sel').dataset.a;
+        const imp = document.getElementById('kid-import');
+        acctRun(async () => {
+          if (f.id) await Cloud.updateKid(f.id, { nickname, avatar });
+          else await Cloud.addKid({ nickname, avatar, importGuest: !!(imp && imp.checked) });
+          acct.form = null;
+        }, f.id ? 'Đã lưu hồ sơ.' : `Đã tạo hồ sơ cho ${nickname}. Bé có thể bắt đầu học!`);
+        break;
+      }
+      case 'ac-del': {
+        const kid = Cloud.kids.find(k => k.id === el.dataset.id);
+        if (!kid || !confirm(`Xóa hồ sơ "${kid.nickname}" cùng toàn bộ tiến độ học tập? Không thể khôi phục.`)) break;
+        acctRun(async () => { await Cloud.deleteKid(kid.id); acct.form = null; }, 'Đã xóa hồ sơ.');
+        break;
+      }
+      case 'ac-guest': acct.guestChosen = true; Cloud.leaveKid().then(() => { location.hash = '#/'; }); break;
+      default: return false;
+    }
+    return true;
+  }
+
+  // Khi trạng thái tài khoản thay đổi: cập nhật góc trên và vẽ lại trang (trừ khi bé đang làm bài)
+  Cloud.subscribe(() => {
+    renderAccountChip();
+    const view = document.body.dataset.view;
+    if (Cloud.user && !Cloud.kid && !acct.guestChosen && ['home', 'topic', 'progress', 'mistakes', 'exams'].includes(view)) {
+      location.hash = '#/account';
+      return;
+    }
+    if (['home', 'topic', 'progress', 'mistakes', 'exams'].includes(view)) route();
+    else if (view === 'account' && !acct.busy) renderAccount();
+  });
+
   // ---------------- ĐIỀU HƯỚNG ----------------
   function route() {
     clearTimers();
@@ -601,6 +784,7 @@
     else if (a === 'speed') renderSpeedIntro();
     else if (a === 'mistakes') renderMistakes();
     else if (a === 'progress') renderProgress();
+    else if (a === 'account') { acct.err = acct.msg = ''; renderAccount(); }
     else renderHome();
     window.scrollTo(0, 0);
   }
@@ -626,6 +810,7 @@
     const el = ev.target.closest('[data-act]');
     if (!el) return;
     const act = el.dataset.act;
+    if (act.startsWith('ac-')) { ev.preventDefault(); acctAction(act, el); return; }
     switch (act) {
       case 'tts': speak(currentQ); break;
       case 'tts-sol': {
@@ -688,7 +873,7 @@
         break;
       }
       case 'mk-clear': if (confirm('Xóa hết các câu trong sổ tay lỗi sai?')) { Store.clearMistakes(); renderMistakes(); } break;
-      case 'reset': if (confirm('Xóa toàn bộ sao, điểm thi và thống kê? Không thể khôi phục.')) { Store.reset(); renderProgress(); } break;
+      case 'reset': if (confirm(`Xóa toàn bộ sao, điểm thi và thống kê${Cloud.kid ? ` của ${Cloud.kid.nickname} (cả trên mạng)` : ''}? Không thể khôi phục.`)) { Store.reset(); renderProgress(); } break;
     }
   });
 
@@ -715,5 +900,7 @@
   });
 
   if (window.speechSynthesis) speechSynthesis.getVoices();
+  Cloud.init();
+  renderAccountChip();
   route();
 })(window.T);

@@ -285,6 +285,8 @@ a.card:hover { transform: translateY(-4px); box-shadow: 0 8px 0 rgba(30, 41, 59,
   .topbar { padding: 8px 12px; }
   .topbar nav a { padding: 4px 8px; font-size: 14px; }
   .topbar nav a:first-child { display: none; }
+  .topbar { flex-wrap: wrap; row-gap: 4px; }
+  .topbar nav { order: 3; width: 100%; justify-content: space-around; }
   .logo { font-size: 20px; }
   .hero { padding: 20px; }
   .qcard { padding: 18px 16px; }
@@ -326,3 +328,57 @@ a.card:hover { transform: translateY(-4px); box-shadow: 0 8px 0 rgba(30, 41, 59,
   border: 2px solid #fcd34d; background: #fff; cursor: pointer; font-size: 17px;
 }
 .say:hover { background: #fef3c7; }
+
+/* ---------- tài khoản ---------- */
+#acct { flex: none; }
+.acct-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 999px;
+  background: #fef3c7; border: 2px solid #fcd34d; color: var(--ink); font-weight: 800; text-decoration: none; white-space: nowrap;
+}
+.acct-chip.login { background: #f97316; border-color: #ea580c; color: #fff; }
+.center-text { text-align: center; }
+.small { font-size: 15px; }
+code { background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: .9em; }
+.auth-card { max-width: 460px; }
+.auth-card .btn { width: 100%; }
+.btn.google { background: #fff; gap: 10px; }
+.btn.google .g { font: 800 20px var(--font-head); color: #4285f4; }
+.or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; margin: 16px 0; }
+.or::before, .or::after { content: ''; flex: 1; height: 2px; background: var(--line); }
+.auth-form, .kid-form { display: grid; gap: 12px; }
+.auth-form label, .lbl { display: grid; gap: 4px; font-weight: 800; font-size: 16px; margin: 0; }
+.auth-form input, .kid-form input:not([type=checkbox]) {
+  font: 600 18px var(--font); padding: 10px 14px; border: 3px solid #cbd5e1; border-radius: 14px; outline: none;
+}
+.auth-form input:focus, .kid-form input:focus { border-color: #f97316; }
+.small-fb { font-size: 16px; margin: 10px 0; }
+.acct-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.kids { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin: 10px 0 20px; }
+.kid {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px 10px;
+  background: var(--card); border: 3px solid transparent; border-radius: 22px; box-shadow: var(--shadow); cursor: pointer; color: var(--ink);
+  transition: transform .15s;
+}
+.kid:hover { transform: translateY(-4px); }
+.kid.cur { border-color: #f97316; }
+.kid.add { border: 3px dashed #cbd5e1; box-shadow: none; background: transparent; }
+.kid b { font: 800 22px var(--font-head); }
+.kid small { color: var(--muted); font-weight: 700; }
+.kid-av { font-size: 56px; line-height: 1.1; }
+.kid-av.sm { font-size: 30px; }
+.kid-cur { position: absolute; top: 8px; right: 8px; font-size: 12px; font-weight: 800; background: #f97316; color: #fff; padding: 1px 8px; border-radius: 999px; }
+.kid-form { margin-bottom: 20px; }
+.kid-form h2 { margin: 0; }
+.avatars { display: flex; flex-wrap: wrap; gap: 8px; }
+.av { font-size: 30px; width: 54px; height: 54px; border-radius: 16px; border: 3px solid var(--line); background: #fff; cursor: pointer; }
+.av.sel { border-color: #f97316; background: #ffedd5; }
+.check { display: flex; gap: 8px; align-items: center; font-weight: 700; }
+.check input { width: 20px; height: 20px; }
+.report { display: grid; gap: 14px; }
+.rep-head { display: flex; align-items: center; gap: 10px; }
+.rep-head b { font: 800 22px var(--font-head); flex: 1; }
+.rep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 10px 0; }
+.rep-grid > div { display: flex; flex-direction: column; background: #f8fafc; border-radius: 12px; padding: 8px 12px; }
+.rep-grid b { font: 800 24px var(--font-head); }
+.rep-grid span { font-size: 13px; color: var(--muted); }
+@media (max-width: 600px) { .acct-chip { padding: 3px 10px; font-size: 14px; } }
