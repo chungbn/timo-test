@@ -1023,12 +1023,28 @@
       G('handshake', combHandshake, [1, 2, 3]), G('outfit', combOutfit, [1, 2, 3]), G('roads', combRoads, [1, 2, 3]), G('digits', combDigits, [1, 2, 3]), G('pigeon', combPigeon, [1, 2, 3]), G('split', combSplit, [1, 2, 3]), G('coins', combCoins, [2, 3])],
   };
   T.GENS = GENS;
+  T.addGrade(1, { gens: GENS });
+
+  // Hàm và hình vẽ dùng chung cho nội dung các lớp 2 – 5 (js/grade*.js)
+  const gcd = (a, b) => (b ? gcd(b, a % b) : Math.abs(a));
+  T.GH = {
+    mk, choicesOf, box, C2, range, sum, digitsOf, gcd, line, svg, INK, NAMES, SHAPES, FRUITS, ANIMALS,
+    svgSegments, svgFan, svgGrid, svgShapes, svgClock, svgBars, svgSquareDiag, svgOneShape, groupsOf5,
+    // 12500 → "12.500" (cách viết số của Việt Nam, dùng trong đề và lời giải)
+    fmt: n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.'),
+    // Số thập phân → "3,5" (dấu phẩy, bỏ số 0 thừa); làm tròn để tránh 0.1 + 0.2 = 0.30000000000000004
+    dec: x => String(Math.round(x * 1e6) / 1e6).replace('.', ','),
+    // Phân số tối giản → "3/4" (mẫu bằng 1 thì chỉ ghi tử số)
+    frac: (a, b) => { const g = gcd(a, b) || 1; a /= g; b /= g; if (b < 0) { a = -a; b = -b; } return b === 1 ? String(a) : `${a}/${b}`; },
+  };
 
   // Sinh 1 câu hỏi; `used` giúp một bộ đề không lặp dạng bài / nội dung.
   // `forms` (tùy chọn): chỉ lấy các dạng bài có id trong danh sách (dùng cho từng bài học).
-  T.generate = function (topic, lv, R, used, forms) {
+  // Dạng bài lấy theo lớp đang học (T.grade), hoặc lớp `grade` nếu truyền vào.
+  T.generate = function (topic, lv, R, used, forms, grade) {
     used = used || { gens: new Set(), texts: new Set() };
-    let list = GENS[topic].filter(g => g.lv.includes(lv));
+    grade = grade || T.grade;
+    let list = T.gensOf(topic, grade).filter(g => g.lv.includes(lv));
     if (forms) { const f = list.filter(g => forms.includes(g.id)); if (f.length) list = f; }
     let pool = list.filter(g => !used.gens.has(g.id));
     if (!pool.length) { used.gens.clear(); pool = list; }
@@ -1040,23 +1056,37 @@
     }
     used.gens.add(g.id);
     used.texts.add(q.text + q.visual);
-    return Object.assign(q, { topic, lv, gen: g.id });
+    return Object.assign(q, { topic, lv, gen: g.id, grade });
   };
 
-  T.generateSet = function (topic, lv, n, R) {
+  T.generateSet = function (topic, lv, n, R, grade) {
     R = R || T.makeRng();
     const used = { gens: new Set(), texts: new Set() };
-    return range(1, n).map(() => T.generate(topic, lv, R, used));
+    return range(1, n).map(() => T.generate(topic, lv, R, used, null, grade));
   };
 })(window.T);
 
 (function (T) {
   'use strict';
   // Sinh 5 câu cho bài học số n của một chủ đề; câu dễ trước, khó sau.
-  T.generateLesson = function (topic, n, R) {
+  T.generateLesson = function (topic, n, R, grade) {
     R = R || T.makeRng();
-    const L = T.lessons(topic)[n - 1];
+    grade = grade || T.grade;
+    const L = T.lessons(topic, grade)[n - 1];
     const used = { gens: new Set(), texts: new Set() };
-    return L.levels.map(lv => T.generate(topic, lv, R, used, L.f));
+    return L.levels.map(lv => T.generate(topic, lv, R, used, L.f, grade));
+  };
+
+  // Đề thi: mỗi chủ đề lấy các câu theo M.levels. Đề cố định (no là số) dùng hạt giống riêng của từng lớp.
+  T.generateExam = function (mode, no, grade) {
+    grade = grade || T.grade;
+    const M = T.EXAM_MODES[mode];
+    const R = T.makeRng(no === 'r' ? Math.floor(Math.random() * 1e9) : T.examSeed(mode, no, grade));
+    const qs = [];
+    for (const t of T.TOPICS) {
+      const used = { gens: new Set(), texts: new Set() };
+      for (const lv of M.levels) qs.push(T.generate(t.id, lv, R, used, null, grade));
+    }
+    return qs;
   };
 })(window.T);

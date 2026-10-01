@@ -1,9 +1,10 @@
-# Ôn thi TIMO lớp 1
+# Ôn thi TIMO lớp 1 – 5
 
-Web học và thi thử Toán TIMO lớp 1: https://timo-test-268b2.web.app (Firebase Hosting). Không cần cài đặt: mở `index.html` bằng trình duyệt.
+Web học và thi thử Toán TIMO lớp 1 đến lớp 5: https://timo-test-268b2.web.app (Firebase Hosting). Không cần cài đặt: mở `index.html` bằng trình duyệt.
 Hoặc chạy server tĩnh: `python3 -m http.server 8000` rồi vào http://localhost:8000.
 
 ## Tính năng
+- **Lớp 1 – 5**: mỗi lớp có lý thuyết, dạng bài, lộ trình, đề thi và thử thách riêng theo chương trình lớp đó. Phụ huynh chọn lớp cho từng hồ sơ bé trong **Khu vực phụ huynh** (Sửa hồ sơ → *Bé đang học lớp*); chế độ khách chọn lớp ở trang **Tiến độ**. Sao, điểm thi và thống kê của từng lớp được giữ riêng nên đổi lớp qua lại không mất tiến độ.
 - **5 chủ đề TIMO**: Tư duy logic, Số học, Lý thuyết số, Hình học, Tổ hợp. Mỗi chủ đề có kiến thức cần nhớ, mẹo và ví dụ mẫu.
 - **Lộ trình 24 bài mỗi chủ đề** (5 câu/bài, tối đa 3 sao/bài): 4 bài *Làm quen* (rất dễ, có hình minh họa), rồi tăng chậm lên Cấp 1, 2, 3 — mỗi bài chuyển tiếp chỉ thêm 1 câu khó hơn. Chấm ngay, có lời giải.
 - **Thi thử**: 90 đề cố định (30 đề Chuẩn, 30 đề Nâng cao, 30 đề Nhanh) và đề ngẫu nhiên. Có đồng hồ đếm ngược, bảng câu hỏi, đánh dấu câu, chấm điểm, xếp huy chương và xem lại lời giải.
@@ -16,19 +17,24 @@ Hoặc chạy server tĩnh: `python3 -m http.server 8000` rồi vào http://loca
 - Bàn phím số trên màn hình (dùng tốt trên máy tính bảng), nút 🔊 đọc đề (tiếng Việt).
 
 ## Cấu trúc
-- `js/generators.js`: 63 dạng bài (4 cấp độ: Làm quen, 1, 2, 3), mỗi dạng sinh câu hỏi ngẫu nhiên theo cấp độ, kèm lời giải và hình vẽ SVG.
-- `js/topics.js`: nội dung lý thuyết, lộ trình bài học (`RAMP`, `LESSONS`), cấu hình đề thi, mức huy chương.
+- `js/generators.js`: 63 dạng bài lớp 1 (4 cấp độ: Làm quen, 1, 2, 3), mỗi dạng sinh câu hỏi ngẫu nhiên theo cấp độ, kèm lời giải và hình vẽ SVG. Cuối file có `T.GH` (hàm và hình vẽ dùng chung), `T.generate`, `T.generateLesson`, `T.generateExam`.
+- `js/grade2.js` ... `js/grade5.js`: nội dung lớp 2 – 5 (lý thuyết từng chủ đề, dạng bài, lộ trình), đăng ký bằng `T.addGrade(lớp, { topics, gens, lessons })`.
+- `js/topics.js`: lý thuyết và lộ trình lớp 1 (`RAMP`, `LESSONS`), sổ đăng ký lớp (`T.GRADES`, `T.grade`, `T.setGrade`), khóa tiến độ theo lớp, cấu hình đề thi, mức huy chương.
 - `js/app.js`: giao diện và điều hướng. `js/storage.js`: lưu tiến độ vào `localStorage`, gộp dữ liệu giữa các thiết bị.
 - `js/cloud.js`: đăng nhập, hồ sơ bé, đồng bộ Firestore. `js/firebase-config.js`: cấu hình Firebase. `firestore.rules`: quy tắc bảo mật.
 
-Thêm dạng bài mới: viết hàm `(R, lv) => mk({ text, answer, solution, ... })` trong `generators.js` rồi đăng ký vào `GENS`.
+Thêm dạng bài mới: viết hàm `(R, lv) => mk({ text, answer, solution, ... })` trong file của lớp đó rồi đăng ký vào `gens` (lớp 1: `GENS` trong `generators.js`). Đáp án ô nhập là số tự nhiên (`12500`), số thập phân `"3,5"` (dùng `dec`) hoặc phân số tối giản `"3/4"` (dùng `frac`); lớp 4 – 5 có thêm phím `,` và `/`.
+
+Kiểm tra nội dung sau khi sửa: `node scripts/check-grades.js [lớp ...]` (sinh thử mọi dạng × cấp độ, kiểm tra đáp án, lựa chọn, lộ trình, đề thi).
+
+**Khóa tiến độ theo lớp**: lớp 1 giữ khóa cũ (`logic-B3`, `full-12`, thống kê `logic`); lớp 2 – 5 thêm tiền tố `g{lớp}-` (`g3-logic-B3`, `g3-full-12`, `g3-logic`). Lớp của hồ sơ bé lưu ở trường `grade` của `users/{uid}/kids/{kidId}`; chế độ khách lưu `localStorage['timo-grade']`.
 
 ## Ngân hàng bài tập (JSON)
-`data/questions.json` chứa toàn bộ ngân hàng bài tập và 90 đề thi cố định (trùng khớp với đề trên web):
-- `questions`: mỗi câu gồm `id`, `topic`, `level`, `form` (dạng bài), `type` (`input`/`choice`), `text`, `visual` (SVG), `choices`, `answer`, `solution`.
+`data/questions.json` (lớp 1) và `data/questions-lop2.json` ... `questions-lop5.json` chứa toàn bộ ngân hàng bài tập và 90 đề thi cố định của từng lớp (trùng khớp với đề trên web):
+- `questions`: mỗi câu gồm `id`, `grade`, `topic`, `level`, `form` (dạng bài), `type` (`input`/`choice`), `text`, `visual` (SVG), `choices`, `answer`, `solution`.
 - `exams`: mỗi đề gồm `id` (vd. `full-3`), `mode`, `minutes`, `questionIds`.
 
-Sinh lại sau khi sửa `generators.js`: `node scripts/export-questions.js [số câu mỗi dạng/cấp, mặc định 30]`.
+Sinh lại sau khi sửa nội dung: `node scripts/export-questions.js [số câu mỗi dạng/cấp, mặc định 30] [lớp ..., mặc định mọi lớp]`.
 
 ## Bật tài khoản phụ huynh (Firebase)
 
@@ -46,9 +52,9 @@ Chạy thử trên máy: dùng `python3 -m http.server 8000` rồi mở http://l
 
 Dữ liệu trên Firestore:
 - `users/{uid}`: email phụ huynh.
-- `users/{uid}/kids/{kidId}`: tên gọi, con vật đại diện, `progress` (sao, thống kê, lịch sử thi, kỷ lục, ngày học).
+- `users/{uid}/kids/{kidId}`: tên gọi, con vật đại diện, `grade` (lớp 1 – 5), `progress` (sao, thống kê, lịch sử thi, kỷ lục, ngày học).
 - `users/{uid}/kids/{kidId}/mistakes/{k}`: sổ tay lỗi sai.
-- `leaderboard/{uid}_{kidId}`: bảng xếp hạng (ai cũng đọc được): tên gọi, con vật, `allStars`, `allDone`, `bestStreak`, `bestExam` và các trường theo kỳ `ws_/wd_{năm}_{tuần}` (sao/số câu trong tuần), `ms_/md_{năm}_{tháng}`. Mỗi lần ghi là ghi đè cả bản ghi nên trường của kỳ cũ tự mất; sắp xếp dùng chỉ mục một trường tự động của Firestore, không cần tạo chỉ mục.
+- `leaderboard/{uid}_{kidId}`: bảng xếp hạng (ai cũng đọc được): tên gọi, con vật, `grade`, `allStars`, `allDone`, `bestStreak`, `bestExam` và các trường theo kỳ `ws_/wd_{năm}_{tuần}` (sao/số câu trong tuần), `ms_/md_{năm}_{tháng}`. Mỗi lần ghi là ghi đè cả bản ghi nên trường của kỳ cũ tự mất; sắp xếp dùng chỉ mục một trường tự động của Firestore, không cần tạo chỉ mục.
 
 **Khi sửa `firestore.rules`**, nhớ dán lại vào Firebase Console → Firestore Database → Rules → Publish.
 

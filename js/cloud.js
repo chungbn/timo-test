@@ -1,7 +1,7 @@
 (function (T) {
   'use strict';
   // Tài khoản phụ huynh (Firebase Auth) + hồ sơ các bé + đồng bộ tiến độ (Firestore).
-  // Firestore: users/{uid}/kids/{kidId} { nickname, avatar, progress, ... }
+  // Firestore: users/{uid}/kids/{kidId} { nickname, avatar, grade (lớp 1 – 5), progress, ... }
   //            users/{uid}/kids/{kidId}/mistakes/{k} { k, q, at }
   // Chưa có FIREBASE_CONFIG thì mọi thứ tắt, web chạy ở chế độ khách như cũ.
   const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
@@ -49,14 +49,17 @@
 
   function useGuest() {
     Cloud.kid = null;
+    T.setGrade(T.guestGrade());
     Store.use(Store.GUEST_KEY);
   }
+  // Lưu hồ sơ đang học trên máy (mở lại ngay lần sau, không phải chờ mạng)
+  const saveProfile = (uid, kid) => localStorage.setItem(PROFILE_KEY, JSON.stringify({ uid, kidId: kid.id, nickname: kid.nickname, avatar: kid.avatar, grade: kid.grade || 1 }));
 
   Cloud.init = async function () {
     if (!cfg) return;
     // Mở lại ngay hồ sơ lần trước từ bộ nhớ máy để không phải chờ mạng
     const p = readProfile();
-    if (p) { Store.use(cacheKey(p.uid, p.kidId)); Cloud.kid = { id: p.kidId, nickname: p.nickname, avatar: p.avatar }; }
+    if (p) { Store.use(cacheKey(p.uid, p.kidId)); Cloud.kid = { id: p.kidId, nickname: p.nickname, avatar: p.avatar, grade: p.grade || 1 }; T.setGrade(p.grade); }
     try {
       if (!window.firebase) {
         await loadScript(SDK + 'firebase-app-compat.js');
@@ -94,7 +97,7 @@
           const prof = readProfile();
           const kid = prof && prof.uid === user.uid && Cloud.kids.find(k => k.id === prof.kidId);
           if (kid) await Cloud.selectKid(kid.id);
-          else { Cloud.kid = null; Store.use(Store.GUEST_KEY); }
+          else useGuest();
         } catch (e) { console.error(e); Cloud.lastError = errorText(e); }
       }
       Cloud.loading = false;
@@ -171,7 +174,8 @@
     merged.mistakes = ms.docs.map(d => d.data()).sort((a, b) => b.at - a.at).slice(0, 80);
     const migrated = Store.use(cacheKey(uid, id), merged);
     Cloud.kid = kid;
-    localStorage.setItem(PROFILE_KEY, JSON.stringify({ uid, kidId: id, nickname: kid.nickname, avatar: kid.avatar }));
+    T.setGrade(kid.grade);
+    saveProfile(uid, kid);
     if (migrated) { dirty = true; schedule(800); } // gửi nhật ký vừa bổ sung lên mạng (kèm bảng xếp hạng)
     else writeLeaderboard(kid, Store.data); // cập nhật kỳ tuần/tháng mới
     emitChange();
@@ -180,17 +184,17 @@
   Cloud.leaveKid = async function () {
     await Cloud.flush();
     localStorage.removeItem(PROFILE_KEY);
-    Cloud.kid = null;
-    Store.use(Store.GUEST_KEY);
+    useGuest();
     emitChange();
   };
 
   // importGuest: chuyển tiến độ đang học ở chế độ khách (trên máy này) vào hồ sơ mới
-  Cloud.addKid = async function ({ nickname, avatar, importGuest }) {
+  Cloud.addKid = async function ({ nickname, avatar, grade, importGuest }) {
     const ref = kidsCol().doc();
     const guest = Store.read(Store.GUEST_KEY);
     const progress = importGuest ? progressOf(guest) : progressOf(Store.blank());
-    await ref.set(Object.assign(clean({ nickname, avatar, progress }), { createdAt: now(), updatedAt: now() }));
+    grade = T.validGrade(grade);
+    await ref.set(Object.assign(clean({ nickname, avatar, grade, progress }), { createdAt: now(), updatedAt: now() }));
     if (importGuest && guest.mistakes.length) {
       const batch = db.batch();
       guest.mistakes.forEach(m => batch.set(ref.collection('mistakes').doc(String(m.k)), clean(m)));
@@ -199,25 +203,27 @@
     if (importGuest) { Store.use(Store.GUEST_KEY, Store.blank()); }
     // Hồ sơ mới: đã có sẵn dữ liệu nên chọn luôn, không cần đọc lại từ server
     await Cloud.flush();
-    const kid = { id: ref.id, nickname, avatar, progress, createdAt: new Date(), updatedAt: new Date() };
+    const kid = { id: ref.id, nickname, avatar, grade, progress, createdAt: new Date(), updatedAt: new Date() };
     Cloud.kids.push(kid);
     const data = Object.assign(Store.blank(), progress, { mistakes: importGuest ? guest.mistakes : [] });
     Store.use(cacheKey(Cloud.user.uid, ref.id), data);
     Cloud.kid = kid;
-    localStorage.setItem(PROFILE_KEY, JSON.stringify({ uid: Cloud.user.uid, kidId: ref.id, nickname, avatar }));
+    T.setGrade(grade);
+    saveProfile(Cloud.user.uid, kid);
     emitChange();
     return ref.id;
   };
 
-  Cloud.updateKid = async function (id, { nickname, avatar }) {
-    await kidRef(id).update({ nickname, avatar, updatedAt: now() });
+  Cloud.updateKid = async function (id, { nickname, avatar, grade }) {
+    grade = T.validGrade(grade);
+    await kidRef(id).update({ nickname, avatar, grade, updatedAt: now() });
     await Cloud.refreshKids();
     const k = Cloud.kids.find(x => x.id === id);
     if (k) writeLeaderboard(k, Cloud.kid && Cloud.kid.id === id ? Store.data : k.progress);
     if (Cloud.kid && Cloud.kid.id === id) {
-      Object.assign(Cloud.kid, { nickname, avatar });
-      const p = readProfile();
-      if (p) localStorage.setItem(PROFILE_KEY, JSON.stringify(Object.assign(p, { nickname, avatar })));
+      Object.assign(Cloud.kid, { nickname, avatar, grade });
+      T.setGrade(grade);
+      saveProfile(Cloud.user.uid, Cloud.kid);
     }
     emitChange();
   };
@@ -243,7 +249,7 @@
     await batch.commit();
     await lbRef(id).delete().catch(() => { /* chưa có trên bảng */ });
     try { localStorage.removeItem(cacheKey(Cloud.user.uid, id)); } catch (e) { /* bỏ qua */ }
-    if (Cloud.kid && Cloud.kid.id === id) { localStorage.removeItem(PROFILE_KEY); Cloud.kid = null; Store.use(Store.GUEST_KEY); }
+    if (Cloud.kid && Cloud.kid.id === id) { localStorage.removeItem(PROFILE_KEY); useGuest(); }
     await Cloud.refreshKids();
     emitChange();
   };
@@ -315,7 +321,7 @@
     d = Object.assign(Store.blank(), d);
     const wk = T.weekKey(), mk = T.monthKey();
     const e = {
-      uid: Cloud.user ? Cloud.user.uid : '', kidId: kid.id, nickname: kid.nickname, avatar: kid.avatar || '🙂',
+      uid: Cloud.user ? Cloud.user.uid : '', kidId: kid.id, nickname: kid.nickname, avatar: kid.avatar || '🙂', grade: kid.grade || 1,
       allStars: Store.totalStars(d), allDone: Object.values(d.stats).reduce((a, s) => a + (s.done || 0), 0),
       bestStreak: Store.bestStreakOf(d), bestExam: Store.bestExamOf(d), updatedAt: now(),
     };
@@ -363,12 +369,13 @@
   Cloud.kidSummary = function (kid) {
     const d = Object.assign(Store.blank(), kid.progress || {});
     if (Cloud.kid && Cloud.kid.id === kid.id) Object.assign(d, progressOf(Store.data));
-    const stats = Object.values(d.stats);
+    const stats = Object.values(d.stats), grade = T.validGrade(kid.grade);
     const done = stats.reduce((a, s) => a + s.done, 0), correct = stats.reduce((a, s) => a + s.correct, 0);
-    const weak = T.TOPICS.map(t => ({ t, s: d.stats[t.id] })).filter(x => x.s && x.s.done >= 5)
+    // Chủ đề cần luyện thêm: theo thống kê của lớp bé đang học
+    const weak = T.TOPICS.map(t => ({ t, s: d.stats[T.statKey(t.id, grade)] })).filter(x => x.s && x.s.done >= 5)
       .sort((a, b) => a.s.correct / a.s.done - b.s.correct / b.s.done)[0];
     return {
-      stars: Store.totalStars(d), lessonStars: Store.lessonStars(d), done, pct: done ? Math.round(correct / done * 100) : 0,
+      grade, stars: Store.totalStars(d), lessonStars: Store.gradeLessonStars(d, grade), done, pct: done ? Math.round(correct / done * 100) : 0,
       exams: d.exams.length, bestExam: d.exams.length ? Math.max(...d.exams.map(e => e.score)) : null,
       lastExam: d.exams[0] || null, streak: Store.streak(d), bestStreak: Store.bestStreakOf(d), weak: weak ? weak.t : null,
       updatedAt: toDate(kid.updatedAt),

@@ -129,7 +129,7 @@
   ];
   // Tên bài và dạng bài tập trung (f = null: trộn mọi dạng của cấp độ đó).
   // Mỗi chủ đề khai báo 3 bài Làm quen, 4 bài Cấp 1, 2 bài Cấp 2 theo dạng; các bài còn lại là bài ôn/trộn chung.
-  function path(lv0, lv1, lv2) {
+  const path = T.lessonPath = function (lv0, lv1, lv2) {
     const mix = t => ({ t, f: null });
     return [
       ...lv0, mix('Ôn tập làm quen'),
@@ -139,8 +139,8 @@
       ...lv2, mix('Mức đề thi'),
       mix('Thử thách 1'), mix('Thử thách 2'), mix('Thử thách 3'), mix('Thử thách 4'), mix('Về đích 🏁'),
     ];
-  }
-  const L_ = (t, ...f) => ({ t, f });
+  };
+  const L_ = T.L_ = (t, ...f) => ({ t, f });
   const LESSONS = {
     logic: path(
       [L_('Đếm tiếp dãy số', 'seq0'), L_('Hình lặp lại, hình khác loại', 'pattern0', 'odd0'), L_('So sánh và vị trí', 'compare0', 'position0')],
@@ -163,11 +163,47 @@
       [L_('Chọn quần áo, tìm đường', 'outfit', 'roads'), L_('Bắt tay, thi đấu', 'handshake'), L_('Tách số, lập số', 'split', 'digits'), L_('Lấy bi chắc chắn', 'pigeon')],
       [L_('Đếm cách nâng cao', 'handshake', 'outfit', 'roads', 'coins'), L_('Lập số, trường hợp xấu nhất', 'digits', 'pigeon', 'split')]),
   };
-  T.lessons = topic => LESSONS[topic].map((L, i) => Object.assign({ n: i + 1, levels: T.RAMP[i] }, L));
+  // ---------------- Lớp 1 – 5 ----------------
+  // Mỗi lớp có nội dung riêng: lý thuyết từng chủ đề (desc, points, tips, examples), dạng bài (gens) và lộ trình (lessons).
+  // Lớp 1 khai báo ở file này và generators.js; lớp 2 – 5 ở js/grade2.js ... js/grade5.js (gọi T.addGrade).
+  T.GRADES = {};
+  T.GRADE_LIST = [1, 2, 3, 4, 5];
+  T.addGrade = function (g, data) {
+    const cur = T.GRADES[g] || (T.GRADES[g] = { topics: {}, gens: {}, lessons: {} });
+    for (const k of ['topics', 'gens', 'lessons']) Object.assign(cur[k], data[k] || {});
+  };
+  T.addGrade(1, {
+    topics: Object.fromEntries(T.TOPICS.map(({ id, desc, points, tips, examples }) => [id, { desc, points, tips, examples }])),
+    lessons: LESSONS,
+  });
+
+  // Lớp đang học: theo hồ sơ bé (cloud.js gọi T.setGrade) hoặc cài đặt của chế độ khách (lưu trên máy).
+  T.GUEST_GRADE_KEY = 'timo-grade';
+  const validGrade = g => (T.GRADE_LIST.includes(+g) ? +g : 1);
+  T.validGrade = validGrade;
+  T.guestGrade = () => { try { return validGrade(localStorage.getItem(T.GUEST_GRADE_KEY)); } catch (e) { return 1; } };
+  T.grade = T.guestGrade();
+  T.setGrade = g => { T.grade = validGrade(g); };
+  T.setGuestGrade = g => { try { localStorage.setItem(T.GUEST_GRADE_KEY, String(validGrade(g))); } catch (e) { /* bỏ qua */ } };
+  const gradeData = g => T.GRADES[validGrade(g || T.grade)] || T.GRADES[1];
+  // Lý thuyết của chủ đề theo lớp (tên, biểu tượng, màu dùng chung mọi lớp)
+  T.topicInfo = (id, g) => Object.assign({}, T.topicById(id), gradeData(g).topics[id]);
+  T.gensOf = (topic, g) => gradeData(g).gens[topic] || [];
+
+  T.lessons = (topic, g) => gradeData(g).lessons[topic].map((L, i) => Object.assign({ n: i + 1, levels: T.RAMP[i] }, L));
   T.LESSON_COUNT = T.RAMP.length;
   // Khóa sao của bài học. Lộ trình 12 bài cũ dùng "-L{n}"; lộ trình 24 bài dùng "-B{n}" (bài cũ n ≈ bài mới 2n−1).
-  T.lessonKey = (topic, n) => `${topic}-B${n}`;
+  // Lớp 2 – 5 thêm tiền tố "g{lớp}-" để tiến độ mỗi lớp tách riêng (lớp 1 giữ khóa cũ).
+  const gp = g => { g = validGrade(g || T.grade); return g === 1 ? '' : `g${g}-`; };
+  T.lessonKey = (topic, n, g) => `${gp(g)}${topic}-B${n}`;
   T.LESSON_KEY_RE = /-B\d+$/;
+  T.gradeOfKey = k => { const m = /^g(\d)-/.exec(k); return m ? +m[1] : 1; };
+  // Thống kê đúng/sai theo chủ đề, tách theo lớp
+  T.statKey = (topic, g) => `${gp(g)}${topic}`;
+  // Khóa điểm cao nhất của đề thi cố định và hạt giống sinh đề (lớp 1 giữ nguyên như cũ)
+  T.examKey = (mode, no, g) => `${gp(g)}${mode}-${no}`;
+  T.examSeed = (mode, no, g) => T.hashStr(`${gp(g).replace('-', '#')}${mode}#${no}`);
+  T.gradeName = g => `Lớp ${validGrade(g || T.grade)}`;
 
   T.EXAM_MODES = {
     full: { name: 'Thi thử TIMO', short: 'Chuẩn', per: 5, levels: [1, 1, 2, 2, 3], minutes: 90, desc: '25 câu · 90 phút · giống đề thi thật' },

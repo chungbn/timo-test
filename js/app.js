@@ -13,29 +13,40 @@
   const PRAISE = ['Giỏi quá! 🎉', 'Chính xác! 🌟', 'Tuyệt vời! 🚀', 'Đúng rồi! 👏', 'Xuất sắc! 🏆', 'Con làm tốt lắm! 💯'];
 
   // ---------------- tiện ích giao diện ----------------
+  // Đáp án ô nhập: số tự nhiên (bỏ qua dấu chấm/khoảng trắng ngăn cách hàng nghìn, chữ kèm theo như "15 viên"),
+  // số thập phân "3,5" (gõ dấu phẩy hoặc chấm, so theo giá trị) hoặc phân số tối giản "3/4".
   function isCorrect(q, v) {
     if (v == null || String(v).trim() === '') return false;
     if (q.type === 'choice') return v === q.answer;
-    const m = String(v).match(/\d+/);
+    const s = String(v).trim().replace(/\s+/g, ' ');
+    if (q.answer.includes('/')) return s.replace(/\s/g, '') === q.answer;
+    if (q.answer.includes(',')) {
+      const m = s.match(/\d+(?:[.,]\d+)?/);
+      return !!m && Math.abs(Number(m[0].replace(',', '.')) - Number(q.answer.replace(',', '.'))) < 1e-9;
+    }
+    const m = s.replace(/(\d)[.\s](?=\d{3}(?!\d))/g, '$1').match(/\d+/);
     return !!m && Number(m[0]) === Number(q.answer);
   }
 
-  function keypad() {
-    return `<div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button type="button" class="kp" data-act="kp" data-k="${k}">${k}</button>`).join('')}</div>`;
+  // Lớp 4 – 5 có phân số, số thập phân: bàn phím thêm dấu phẩy và dấu gạch phân số
+  function keypad(extra) {
+    const keys = extra ? [1, 2, 3, 4, 5, 6, 7, 8, 9, ',', 0, '/', 'C', '⌫'] : [1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'];
+    return `<div class="keypad">${keys.map(k => `<button type="button" class="kp" data-act="kp" data-k="${k}">${k}</button>`).join('')}</div>`;
   }
 
   function answerArea(q, val, locked) {
     if (q.type === 'choice') {
       return `<div class="choices">${q.choices.map(c => `<button type="button" class="choice ${val === c ? 'sel' : ''}" data-act="choice" data-v="${esc(c)}" ${locked ? 'disabled' : ''}>${esc(c)}</button>`).join('')}</div>`;
     }
-    return `<div class="answer-area"><label class="ans-wrap">Đáp số: <input class="ans" inputmode="numeric" autocomplete="off" maxlength="4" value="${esc(val || '')}" ${locked ? 'disabled' : ''} placeholder="?"></label>${locked ? '' : keypad()}</div>`;
+    const extra = (q.grade || 1) >= 4;
+    return `<div class="answer-area"><label class="ans-wrap">Đáp số: <input class="ans" inputmode="${extra ? 'decimal' : 'numeric'}" autocomplete="off" maxlength="${(q.grade || 1) >= 2 ? 10 : 4}" value="${esc(val || '')}" ${locked ? 'disabled' : ''} placeholder="?"></label>${locked ? '' : keypad(extra)}</div>`;
   }
 
   function questionCard(q, label, val, locked) {
     const t = topicById(q.topic);
     currentQ = q;
     return `<div class="qcard" style="--c:${t.color}">
-      <div class="q-top"><span class="q-label">${label}</span><span class="tag">${t.icon} ${t.name} · ${T.levelName(q.lv)}</span><button type="button" class="icon-btn" data-act="tts" title="Đọc đề">🔊</button></div>
+      <div class="q-top"><span class="q-label">${label}</span><span class="tag">${t.icon} ${t.name} · ${(q.grade || 1) !== T.grade ? T.gradeName(q.grade || 1) + ' · ' : ''}${T.levelName(q.lv)}</span><button type="button" class="icon-btn" data-act="tts" title="Đọc đề">🔊</button></div>
       <div class="q-text">${q.text}</div>
       ${q.visual ? `<div class="q-visual">${q.visual}</div>` : ''}
       ${answerArea(q, val, locked)}
@@ -48,6 +59,20 @@
   function lessonLevel(L) {
     const a = Math.min(...L.levels), b = Math.max(...L.levels);
     return a === b ? T.levelName(a) : `${T.levelName(a)} → ${T.levelName(b)}`;
+  }
+
+  // Lớp đang học: hồ sơ bé do phụ huynh đổi trong Khu vực phụ huynh; chế độ khách đổi ở trang Tiến độ
+  function gradeHint() {
+    if (Cloud.kid) return '<small class="muted">Cha mẹ có thể đổi lớp trong <a href="#/account">Khu vực phụ huynh</a>.</small>';
+    return '<small class="muted"><a href="#/progress">Đổi lớp</a></small>';
+  }
+  function gradeOptions(cur) {
+    return T.GRADE_LIST.map(g => `<option value="${g}" ${g === cur ? 'selected' : ''}>Lớp ${g}</option>`).join('');
+  }
+  function updateBrand() {
+    const logo = document.querySelector('.logo');
+    if (logo) logo.innerHTML = `🦉 <span>TIMO</span> Lớp ${T.grade}`;
+    document.title = `Ôn thi TIMO lớp ${T.grade}`;
   }
 
   function starsHtml(n, max = 3) { return `<span class="stars">${'★'.repeat(n)}<span class="off">${'★'.repeat(max - n)}</span></span>`; }
@@ -70,11 +95,11 @@
   const EMOJI_RE = new RegExp(EMOJI_ALT, 'g');
   const EMOJI_RUN_RE = new RegExp(`(${EMOJI_ALT})(?:\\s*\\1)+`, 'g'); // 🍎🍎🍎 → "3 quả táo"
   function toSpeech(html) {
-    return T.stripHtml(String(html).replace(/<\/?(br|div|p|li)[^>]*>/gi, '. ').replace(/&nbsp;/g, ' '))
+    return T.stripHtml(String(html).replace(/&frasl;/g, '⁄').replace(/<\/?(br|div|p|li)[^>]*>/gi, '. ').replace(/&nbsp;/g, ' '))
       .replace(EMOJI_RUN_RE, (m, e) => ` ${m.split(e).length - 1} ${EMOJI_WORDS[e] || ''}, `)
       .replace(EMOJI_RE, m => EMOJI_WORDS[m] ? ` ${EMOJI_WORDS[m]}, ` : ' ')
       .replace(/□/g, ' ô trống ').replace(/−/g, ' trừ ').replace(/\+/g, ' cộng ').replace(/=/g, ' bằng ')
-      .replace(/×/g, ' nhân ').replace(/→/g, ', ').replace(/\s*<\s*/g, ' bé hơn ').replace(/\s*>\s*/g, ' lớn hơn ')
+      .replace(/×/g, ' nhân ').replace(/\s:\s/g, ' chia ').replace(/(\d)\s*[/⁄]\s*(\d)/g, '$1 phần $2').replace(/→/g, ', ').replace(/\s*<\s*/g, ' bé hơn ').replace(/\s*>\s*/g, ' lớn hơn ')
       .replace(/💡|Lời giải:/g, '').replace(/\s+/g, ' ').replace(/,\s*([.?:,])/g, '$1').replace(/:\s*\./g, ':')
       .replace(/(\.\s*){2,}/g, '. ').replace(/([?!])\s*\./g, '$1').replace(/,\s*$/, '').trim();
   }
@@ -138,7 +163,8 @@
     ${todayDone ? '' : dailyCard}
     <section class="hero">
       <div class="hero-text">
-        <h1>${Cloud.kid ? `Chào ${esc(Cloud.kid.nickname)} ${esc(Cloud.kid.avatar || '')}!` : 'Chinh phục <span>TIMO</span> lớp 1 🦉'}</h1>
+        <h1>${Cloud.kid ? `Chào ${esc(Cloud.kid.nickname)} ${esc(Cloud.kid.avatar || '')}!` : `Chinh phục <span>TIMO</span> lớp ${T.grade} 🦉`}</h1>
+        <p><span class="grade-pill">📘 Đang học chương trình lớp ${T.grade}</span> ${gradeHint()}</p>
         <p>Học theo 5 chủ đề của kỳ thi Olympic Toán Quốc tế TIMO: Tư duy logic, Số học, Lý thuyết số, Hình học và Tổ hợp. Mỗi lần luyện là một bộ câu hỏi mới!</p>
         <div class="hero-stats">
           <div><b>${Store.totalStars()}</b><span>⭐ sao</span></div>
@@ -156,7 +182,7 @@ ${todayDone ? dailyCard : ''}
       ${TOPICS.map(t => {
         const st = topicStars(t.id), max = T.LESSON_COUNT * 3;
         return `<a class="card topic" href="#/topic/${t.id}" style="--c:${t.color}">
-          <div class="ico">${t.icon}</div><h3>${t.name}</h3><p>${t.desc}</p>
+          <div class="ico">${t.icon}</div><h3>${t.name}</h3><p>${T.topicInfo(t.id).desc}</p>
           <div class="meter"><div style="width:${st / max * 100}%"></div></div><small>⭐ ${st}/${max} sao · ${T.LESSON_COUNT} bài</small>
         </a>`;
       }).join('')}
@@ -175,13 +201,13 @@ ${todayDone ? dailyCard : ''}
 
   // ---------------- CHỦ ĐỀ ----------------
   function renderTopic(id) {
-    const t = topicById(id);
-    if (!t) return renderHome();
+    if (!topicById(id)) return renderHome();
+    const t = T.topicInfo(id);
     $app.innerHTML = `
     <a href="#/" class="back">← Trang chủ</a>
     <section class="topic-head" style="--c:${t.color}">
       <div class="ico big">${t.icon}</div>
-      <div><h1>${t.name}</h1><p>${t.desc}</p></div>
+      <div><h1>${t.name} <small class="muted">· Lớp ${T.grade}</small></h1><p>${t.desc}</p></div>
     </section>
     <h2 class="sec-title">🗺️ Lộ trình ${T.LESSON_COUNT} bài · mỗi bài ${T.LESSON_SIZE} câu <small class="muted">⭐ ${topicStars(t.id)}/${T.LESSON_COUNT * 3}</small></h2>
     <div class="path">
@@ -240,7 +266,7 @@ ${todayDone ? dailyCard : ''}
     s.checked = true;
     if (ok) s.correct++;
     s.results.push({ q, v, ok });
-    Store.recordAnswer(q.topic, ok);
+    Store.recordAnswer(T.statKey(q.topic, q.grade || 1), ok);
     if (!ok) Store.addMistake(q);
     else if (s.mode === 'mistakes') Store.removeMistake(q);
 
@@ -317,14 +343,14 @@ ${todayDone ? dailyCard : ''}
     const modes = Object.entries(T.EXAM_MODES);
     $app.innerHTML = `
     <a href="#/" class="back">← Trang chủ</a>
-    <h1 class="page-title">📝 Thi thử TIMO</h1>
+    <h1 class="page-title">📝 Thi thử TIMO lớp ${T.grade}</h1>
     <p class="lead">Đề thi được chia đều 5 chủ đề như đề thi thật. Mỗi đề số luôn giữ nguyên câu hỏi để con làm lại và so sánh điểm. Chọn "Đề ngẫu nhiên" để có đề mới hoàn toàn.</p>
     ${modes.map(([key, M]) => `
       <section class="exam-group">
         <div class="exam-group-head"><h2>${M.name}</h2><span>${M.desc}</span><a class="btn primary small" href="#/exam/${key}/r">🎲 Đề ngẫu nhiên</a></div>
         <div class="exam-grid">
           ${Array.from({ length: T.EXAM_COUNT }, (_, i) => {
-            const b = Store.best(`${key}-${i + 1}`);
+            const b = Store.best(T.examKey(key, i + 1));
             const m = b != null ? T.medal(b) : null;
             return `<a class="exam-tile ${m ? m.cls : ''}" href="#/exam/${key}/${i + 1}"><b>Đề ${i + 1}</b><small>${b != null ? `${m.icon} ${b}đ` : 'Chưa làm'}</small></a>`;
           }).join('')}
@@ -333,17 +359,11 @@ ${todayDone ? dailyCard : ''}
   }
 
   function buildExam(mode, no) {
-    const M = T.EXAM_MODES[mode];
-    const seed = no === 'r' ? Math.floor(Math.random() * 1e9) : T.hashStr(`${mode}#${no}`);
-    const R = T.makeRng(seed);
-    const qs = [];
-    for (const t of TOPICS) {
-      const used = { gens: new Set(), texts: new Set() };
-      for (const lv of M.levels) qs.push(T.generate(t.id, lv, R, used));
-    }
+    const M = T.EXAM_MODES[mode], grade = T.grade;
+    const qs = T.generateExam(mode, no, grade);
     return {
-      mode, no, key: `${mode}-${no}`, M, qs,
-      title: `${M.name} · ${no === 'r' ? 'Đề ngẫu nhiên' : 'Đề số ' + no}`,
+      mode, no, grade, key: T.examKey(mode, no, grade), M, qs,
+      title: `${M.name} lớp ${grade} · ${no === 'r' ? 'Đề ngẫu nhiên' : 'Đề số ' + no}`,
       answers: qs.map(() => ''), flags: qs.map(() => false),
       idx: 0, started: false, submitted: false,
     };
@@ -351,7 +371,7 @@ ${todayDone ? dailyCard : ''}
 
   function routeExam(mode, no) {
     if (!T.EXAM_MODES[mode]) return renderExamList();
-    const key = `${mode}-${no}`;
+    const key = T.examKey(mode, no);
     if (exam && exam.key === key && no !== 'r') return exam.submitted ? renderExamResult() : exam.started ? (startExamTimer(), renderExam()) : renderExamIntro();
     exam = buildExam(mode, no);
     renderExamIntro();
@@ -442,7 +462,7 @@ ${todayDone ? dailyCard : ''}
     e.res = e.qs.map((q, i) => isCorrect(q, e.answers[i]));
     e.correct = e.res.filter(Boolean).length;
     e.score = Math.round(e.correct * 100 / e.qs.length);
-    e.qs.forEach((q, i) => { Store.recordAnswer(q.topic, e.res[i]); if (!e.res[i]) Store.addMistake(q); });
+    e.qs.forEach((q, i) => { Store.recordAnswer(T.statKey(q.topic, e.grade), e.res[i]); if (!e.res[i]) Store.addMistake(q); });
     Store.addExam({ key: e.key, title: e.title, score: e.score, correct: e.correct, n: e.qs.length, usedSec: e.usedSec, date: Date.now() });
     renderExamResult();
     if (auto) alert('⏰ Hết giờ! Bài làm đã được nộp.');
@@ -475,10 +495,18 @@ ${todayDone ? dailyCard : ''}
   }
 
   // ---------------- TÍNH NHẨM 60 GIÂY ----------------
+  // Phép tính nhẩm theo lớp: lớp 1 cộng trừ; lớp 2 thêm bảng nhân 2, 5; lớp 3 trở lên đủ bảng nhân chia, số lớn dần
   function speedQuestion(level) {
-    const R = T.makeRng();
-    const max = level < 8 ? 10 : level < 16 ? 20 : 50;
-    if (R.chance(0.5)) { const a = R.int(1, max - 1), b = R.int(1, max - a); return { text: `${a} + ${b}`, ans: a + b }; }
+    const R = T.makeRng(), g = T.grade, hard = level >= 8 ? 1 : 0, harder = level >= 16 ? 1 : 0;
+    const max = g === 1 ? (level < 8 ? 10 : level < 16 ? 20 : 50) : [0, 0, 100, 1000, 1000, 10000][g] / (harder ? 1 : hard ? 2 : 10);
+    const kinds = g === 1 ? ['add', 'sub'] : g === 2 ? ['add', 'sub', 'mul'] : ['add', 'sub', 'mul', 'div'];
+    const kind = R.pick(kinds);
+    if (kind === 'mul' || kind === 'div') {
+      const t = g === 2 ? R.pick([2, 5, 2, 5, 3, 4]) : R.int(2, 9);
+      const k = g >= 4 && harder ? R.int(11, 25) : g >= 3 && hard ? R.int(2, 12) : R.int(1, 10);
+      return kind === 'mul' ? { text: `${t} × ${k}`, ans: t * k } : { text: `${t * k} : ${t}`, ans: k };
+    }
+    if (kind === 'add') { const a = R.int(1, max - 1), b = R.int(1, max - a); return { text: `${a} + ${b}`, ans: a + b }; }
     const a = R.int(2, max), b = R.int(1, a); return { text: `${a} − ${b}`, ans: a - b };
   }
 
@@ -499,7 +527,7 @@ ${todayDone ? dailyCard : ''}
     <div class="speed">
       <div class="speed-top"><span id="sp-time" class="timer">⏱ 60</span><span class="sess-score">✅ <b id="sp-score">${speed.score}</b></span></div>
       <div class="speed-q" id="sp-q">${speed.q.text} = ?</div>
-      <div class="answer-area"><label class="ans-wrap">Đáp số: <input class="ans" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="?"></label>${keypad()}</div>
+      <div class="answer-area"><label class="ans-wrap">Đáp số: <input class="ans" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="?"></label>${keypad()}</div>
       <div class="actions center"><button class="btn primary big" data-act="sp-ok">OK ✔</button></div>
     </div>`;
     focusAns();
@@ -557,24 +585,28 @@ ${todayDone ? dailyCard : ''}
     $app.innerHTML = `
     <a href="#/" class="back">← Trang chủ</a>
     <h1 class="page-title">📊 Tiến độ học tập</h1>
+    ${Cloud.kid ? '' : `<div class="card flat grade-set" style="--c:#2563eb">
+      <label>📘 Chương trình đang học: <select id="guest-grade">${gradeOptions(T.grade)}</select></label>
+      <small class="muted">Đổi lớp sẽ đổi lộ trình bài học, đề thi và thử thách. Sao và tiến độ của từng lớp được giữ riêng.${Cloud.enabled ? ' Khi bé học bằng hồ sơ, cha mẹ đổi lớp trong Khu vực phụ huynh.' : ''}</small>
+    </div>`}
     <div class="hero-stats wide">
       <div><b>${done}</b><span>câu đã làm</span></div>
       <div><b>${done ? Math.round(correct / done * 100) : 0}%</b><span>tỉ lệ đúng</span></div>
-      <div><b>${Store.totalStars()}</b><span>⭐ sao (lộ trình ${Store.lessonStars()}/${TOPICS.length * T.LESSON_COUNT * 3} · thưởng ${Store.bonusStars()})</span></div>
+      <div><b>${Store.totalStars()}</b><span>⭐ sao (lộ trình lớp ${T.grade}: ${Store.gradeLessonStars(d, T.grade)}/${TOPICS.length * T.LESSON_COUNT * 3} · thưởng ${Store.bonusStars()})</span></div>
       <div><b>${d.exams.length}</b><span>bài thi</span></div>
       <div><b>${d.speedBest}</b><span>⚡ kỷ lục tính nhẩm</span></div>
       <div><b>${Store.streak()}</b><span>🔥 ngày liên tiếp</span></div>
       <div><b>${Store.bestStreakOf(d)}</b><span>🏅 kỷ lục ngày liên tiếp</span></div>
     </div>
-    <h2 class="sec-title">Theo chủ đề</h2>
+    <h2 class="sec-title">Theo chủ đề · Lớp ${T.grade}</h2>
     <div class="topic-bars card flat">
       ${TOPICS.map(t => {
-        const s = d.stats[t.id] || { done: 0, correct: 0 };
+        const s = d.stats[T.statKey(t.id)] || { done: 0, correct: 0 };
         const pct = s.done ? Math.round(s.correct / s.done * 100) : 0;
         return `<div class="tb"><span>${t.icon} ${t.name}</span><div class="meter" style="--c:${t.color}"><div style="width:${pct}%"></div></div><b>${pct}%</b><small>${s.correct}/${s.done} câu · ⭐ ${topicStars(t.id)}/${T.LESSON_COUNT * 3} sao · xong ${T.lessons(t.id).filter(L => Store.stars(T.lessonKey(t.id, L.n))).length}/${T.LESSON_COUNT} bài</small></div>`;
       }).join('')}
       ${(() => {
-        const weak = TOPICS.map(t => ({ t, s: d.stats[t.id] })).filter(x => x.s && x.s.done >= 5).sort((a, b) => a.s.correct / a.s.done - b.s.correct / b.s.done)[0];
+        const weak = TOPICS.map(t => ({ t, s: d.stats[T.statKey(t.id)] })).filter(x => x.s && x.s.done >= 5).sort((a, b) => a.s.correct / a.s.done - b.s.correct / b.s.done)[0];
         return weak ? `<p class="tip">💡 Con nên luyện thêm chủ đề <a href="#/topic/${weak.t.id}"><b>${weak.t.icon} ${weak.t.name}</b></a>.</p>` : '';
       })()}
     </div>
@@ -739,6 +771,8 @@ ${todayDone ? dailyCard : ''}
       return `<div class="card flat kid-form" style="--c:#f97316">
         <h2>${kid ? 'Sửa hồ sơ' : 'Thêm hồ sơ cho bé'}</h2>
         <label class="lbl">Tên gọi của bé<input id="kid-name" maxlength="20" value="${esc(f.nickname != null ? f.nickname : kid ? kid.nickname : '')}" placeholder="Ví dụ: Bin, Na, Su..."></label>
+        <label class="lbl">Bé đang học lớp<select id="kid-grade">${gradeOptions(f.grade || (kid && kid.grade) || (kid ? 1 : T.guestGrade()))}</select></label>
+        <p class="muted small">Lớp quyết định lộ trình bài học, đề thi thử và thử thách hằng ngày. Đổi lớp lúc nào cũng được, tiến độ của từng lớp được giữ riêng.</p>
         <p class="lbl">Chọn con vật đại diện</p>
         <div class="avatars">${AVATARS.map(a => `<button type="button" class="av ${a === av ? 'sel' : ''}" data-act="ac-av" data-a="${a}">${a}</button>`).join('')}</div>
         ${!kid && guestHasData ? '<label class="check"><input type="checkbox" id="kid-import" checked> Chuyển tiến độ đang có trên máy này (chế độ khách) vào hồ sơ này</label>' : ''}
@@ -765,12 +799,12 @@ ${todayDone ? dailyCard : ''}
       ${Cloud.kids.length ? `<div class="report">${Cloud.kids.map(k => {
         const s = Cloud.kidSummary(k);
         return `<div class="card flat rep" style="--c:#14b8a6">
-          <div class="rep-head"><span class="kid-av sm">${esc(k.avatar || '🙂')}</span><b>${esc(k.nickname)}</b>
+          <div class="rep-head"><span class="kid-av sm">${esc(k.avatar || '🙂')}</span><b>${esc(k.nickname)}</b><span class="grade-pill">Lớp ${k.grade || 1}</span>
             <button class="btn small" data-act="ac-edit" data-id="${k.id}">✏️ Sửa hồ sơ</button>
             <button class="btn small ${k.onLeaderboard === false ? '' : 'lb-on'}" data-act="ac-lb" data-id="${k.id}" ${dis} title="Hiện hoặc ẩn bé trên bảng xếp hạng">🏆 ${k.onLeaderboard === false ? 'Đang ẩn' : 'Đang hiện'} trên bảng xếp hạng</button>
             <button class="btn small danger" data-act="ac-reset" data-id="${k.id}" ${dis}>🗑 Xóa dữ liệu học tập</button></div>
           <div class="rep-grid">
-            <div><b>${s.stars}</b><span>⭐ sao · lộ trình ${s.lessonStars}/${TOPICS.length * T.LESSON_COUNT * 3}</span></div>
+            <div><b>${s.stars}</b><span>⭐ sao · lộ trình lớp ${s.grade} ${s.lessonStars}/${TOPICS.length * T.LESSON_COUNT * 3}</span></div>
             <div><b>${s.done}</b><span>câu đã làm</span></div>
             <div><b>${s.pct}%</b><span>tỉ lệ đúng</span></div>
             <div><b>${s.exams}</b><span>bài thi${s.bestExam != null ? ` · cao nhất ${s.bestExam}đ` : ''}</span></div>
@@ -795,7 +829,7 @@ ${todayDone ? dailyCard : ''}
       ${acct.pin.stage ? pinCard() : ''}
       ${Cloud.kids.length ? `<div class="kids">
         ${Cloud.kids.map(k => `<button class="kid ${Cloud.kid && Cloud.kid.id === k.id ? 'cur' : ''}" data-act="ac-pick" data-id="${k.id}" ${dis}>
-          <span class="kid-av">${esc(k.avatar || '🙂')}</span><b>${esc(k.nickname)}</b><small>⭐ ${Cloud.kidSummary(k).stars} sao</small>
+          <span class="kid-av">${esc(k.avatar || '🙂')}</span><b>${esc(k.nickname)}</b><small>Lớp ${k.grade || 1} · ⭐ ${Cloud.kidSummary(k).stars} sao</small>
           ${Cloud.kid && Cloud.kid.id === k.id ? '<span class="kid-cur">Đang học</span>' : ''}
         </button>`).join('')}
       </div>` : ''}
@@ -857,6 +891,7 @@ ${todayDone ? dailyCard : ''}
       case 'ac-av':
         acct.form.avatar = el.dataset.a;
         acct.form.nickname = val('kid-name');
+        acct.form.grade = +val('kid-grade') || null;
         document.querySelectorAll('.av').forEach(b => b.classList.toggle('sel', b === el));
         break;
       case 'ac-save': {
@@ -865,9 +900,10 @@ ${todayDone ? dailyCard : ''}
         const f = acct.form, kid = f.id && Cloud.kids.find(k => k.id === f.id);
         const avatar = f.avatar || (kid && kid.avatar) || document.querySelector('.av.sel').dataset.a;
         const imp = document.getElementById('kid-import');
+        const grade = T.validGrade(val('kid-grade'));
         acctRun(async () => {
-          if (f.id) await Cloud.updateKid(f.id, { nickname, avatar });
-          else await Cloud.addKid({ nickname, avatar, importGuest: !!(imp && imp.checked) });
+          if (f.id) await Cloud.updateKid(f.id, { nickname, avatar, grade });
+          else await Cloud.addKid({ nickname, avatar, grade, importGuest: !!(imp && imp.checked) });
           acct.form = null;
         }, f.id ? 'Đã lưu hồ sơ.' : `Đã tạo hồ sơ cho ${nickname}. Bé có thể bắt đầu học!`);
         break;
@@ -966,7 +1002,7 @@ ${todayDone ? dailyCard : ''}
         return `<div class="pod pod-${i + 1} ${cur(r) ? 'me' : mine(r) ? 'ours' : ''}" data-rank="${i + 1}">
           ${i === 0 ? '<div class="crown">👑</div>' : ''}
           <div class="pod-av">${esc(r.avatar || '🙂')}</div>
-          <div class="pod-name">${esc(r.nickname)}</div>${tag(r)}
+          <div class="pod-name">${esc(r.nickname)}</div>${tag(r)}<div class="pod-grade">Lớp ${esc(r.grade || 1)}</div>
           <div class="pod-val">${val(r)}</div>
           <div class="pod-step"><span>${['🥇', '🥈', '🥉'][i]}</span></div>
         </div>`;
@@ -974,7 +1010,7 @@ ${todayDone ? dailyCard : ''}
       const rest = rows.slice(3).map((r, j) => `
         <li class="${cur(r) ? 'me' : mine(r) ? 'ours' : ''}" data-rank="${j + 4}">
           <span class="rk-n">${j + 4}</span><span class="rk-av">${esc(r.avatar || '🙂')}</span>
-          <span class="rk-name">${esc(r.nickname)}${tag(r)}</span><span class="rk-val">${val(r)}</span>
+          <span class="rk-name">${esc(r.nickname)}${tag(r)}<small class="rk-grade">Lớp ${esc(r.grade || 1)}</small></span><span class="rk-val">${val(r)}</span>
         </li>`).join('');
       box.innerHTML = `<div class="podium">${podium}</div>${rest ? `<ol class="rk-list">${rest}</ol>` : ''}`;
     }
@@ -995,6 +1031,7 @@ ${todayDone ? dailyCard : ''}
   // Khi trạng thái tài khoản thay đổi: cập nhật góc trên và vẽ lại trang (trừ khi bé đang làm bài)
   Cloud.subscribe(() => {
     renderAccountChip();
+    updateBrand();
     const view = document.body.dataset.view;
     if (Cloud.user && !Cloud.kid && !acct.guestChosen && ['home', 'topic', 'progress', 'mistakes', 'exams'].includes(view)) {
       location.hash = '#/account';
@@ -1012,18 +1049,19 @@ ${todayDone ? dailyCard : ''}
     const p = (location.hash.slice(1) || '/').split('/').filter(Boolean);
     const [a, b, c] = p;
     document.body.dataset.view = a || 'home';
+    updateBrand();
     if (!a) renderHome();
     else if (a === 'topic') renderTopic(b);
     else if (a === 'practice' && topicById(b) && +c >= 1 && +c <= T.LESSON_COUNT) {
       const t = topicById(b), n = +c, L = T.lessons(b)[n - 1];
-      startSession({ title: `${t.icon} Bài ${n}: ${L.t}`, back: `#/topic/${b}`, topic: b, lesson: n, starKey: T.lessonKey(b, n), make: () => T.generateLesson(b, n) });
+      startSession({ title: `${t.icon} Lớp ${T.grade} · Bài ${n}: ${L.t}`, back: `#/topic/${b}`, topic: b, lesson: n, starKey: T.lessonKey(b, n), make: () => T.generateLesson(b, n) });
     } else if (a === 'mixed') {
       startSession({ title: '🎯 Luyện tổng hợp', back: '#/', make: () => mixedQuestions(T.makeRng(), 10) });
     } else if (a === 'daily') {
       const date = T.today();
       startSession({
         title: `🌞 Thử thách ngày ${date.split('-').reverse().join('/')}${Store.data.daily[date] == null ? ` · 🎁 xong nhận ${T.DAILY_BONUS} ⭐` : ''}`, back: '#/', mode: 'daily',
-        make: () => mixedQuestions(T.makeRng(T.hashStr('daily' + date)), 10, [1, 2, 2, 3, 2]),
+        make: () => mixedQuestions(T.makeRng(T.hashStr('daily' + (T.grade === 1 ? '' : T.grade) + date)), 10, [1, 2, 2, 3, 2]),
         onDone: s => { s.bonus = Store.setDaily(date, s.correct); },
       });
     } else if (a === 'exams') renderExamList();
@@ -1138,6 +1176,15 @@ ${todayDone ? dailyCard : ''}
     const m = $app.querySelector('.navgrid .muted');
     if (m) m.textContent = `Đã làm ${exam.answers.filter(a => a).length}/${exam.qs.length} câu`;
   }
+
+  $app.addEventListener('change', ev => {
+    if (ev.target.id !== 'guest-grade' || Cloud.kid) return;
+    T.setGuestGrade(ev.target.value);
+    T.setGrade(ev.target.value);
+    exam = null;
+    renderAccountChip();
+    route();
+  });
 
   $app.addEventListener('input', ev => {
     if (ev.target.matches('.ans') && exam && exam.started && !exam.submitted && document.body.dataset.view === 'exam') {

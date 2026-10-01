@@ -61,6 +61,8 @@
   // Sao thưởng tính từ danh sách ngày đã hoàn thành (d.daily) nên đồng bộ nhiều máy không bị cộng trùng.
   T.DAILY_BONUS = 20;
   const lessonStars = d => Object.entries(d.stars).filter(([k]) => T.LESSON_KEY_RE.test(k)).reduce((a, [, v]) => a + v, 0);
+  // Sao lộ trình của riêng một lớp (lớp 1: "chủ-đề-B{n}", lớp 2 – 5: "g{lớp}-chủ-đề-B{n}")
+  const gradeLessonStars = (d, g) => Object.entries(d.stars).filter(([k]) => T.LESSON_KEY_RE.test(k) && T.gradeOfKey(k) === g).reduce((a, [, v]) => a + v, 0);
   const bonusStars = (d, period) => {
     const days = Object.keys(d.daily || {});
     return T.DAILY_BONUS * (period ? T.periodSum(Object.fromEntries(days.map(k => [k, 1])), period) : days.length);
@@ -150,6 +152,7 @@
     stars(k) { return data.stars[k] || 0; },
     totalStars(d) { return totalStars(d || data); },
     lessonStars(d) { return lessonStars(d || data); },
+    gradeLessonStars(d, g) { return gradeLessonStars(d || data, g || T.grade); },
     bonusStars(d, period) { return bonusStars(d || data, period); },
     addExam(rec) {
       data.exams.unshift(rec);

@@ -519,3 +519,15 @@ code { background: #f1f5f9; padding: 1px 6px; border-radius: 6px; font-size: .9e
 }
 @media (prefers-reduced-motion: reduce) { .gift-ico, .daily:not(.done) { animation: none; } }
 main > .daily:first-child { margin: 0 0 18px; }
+
+/* Chọn lớp 1 – 5 */
+.grade-pill { display: inline-block; font: 800 13px var(--font); background: #dbeafe; color: #1d4ed8; padding: 2px 10px; border-radius: 999px; vertical-align: middle; }
+.rep-head .grade-pill { margin-right: auto; }
+.grade-set { display: grid; gap: 6px; margin-bottom: 16px; }
+.grade-set label { font-weight: 800; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grade-set select, .lbl select {
+  font: 800 17px var(--font); padding: 8px 12px; border: 2px solid #cbd5e1; border-radius: 12px; background: #fff; color: var(--ink);
+}
+.lbl select { max-width: 200px; }
+.pod-grade { font: 700 12px var(--font); color: var(--muted); }
+.rk-grade { font: 700 12px var(--font); color: var(--muted); margin-left: 6px; }
