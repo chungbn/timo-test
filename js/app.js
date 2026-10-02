@@ -176,6 +176,9 @@
       </div>
     </section>
 
+    ${Cloud.enabled ? `<section class="fame" id="fame"><div class="fame-head"><h2>🏆 Vinh danh tuần này</h2><span class="muted small">⭐ Nhiều sao nhất · ${lbPeriodLabel('week')}</span><a href="#/rank" class="fame-more">Xem bảng xếp hạng →</a></div>
+      <div class="fame-list"><p class="muted small">Đang tải...</p></div></section>` : ''}
+
 ${todayDone ? dailyCard : ''}
 
     <h2 class="sec-title">📚 Học theo chủ đề</h2>
@@ -198,6 +201,27 @@ ${todayDone ? dailyCard : ''}
       <a class="card mode" href="#/rank" style="--c:#eab308"><div class="ico">🏆</div><h3>Bảng xếp hạng</h3><p>Sao, số câu theo tuần, tháng; kỷ lục ngày học, điểm thi</p></a>
       <a class="card mode" href="#/progress" style="--c:#14b8a6"><div class="ico">📊</div><h3>Tiến độ học tập</h3><p>Thống kê theo chủ đề, lịch sử bài thi</p></a>
     </div>`;
+    if (Cloud.enabled) loadFame(++fameToken);
+  }
+
+  // Vinh danh top 3 số sao trong tuần trên trang chủ (dùng chung dữ liệu và bộ nhớ đệm với trang Bảng xếp hạng)
+  let fameToken = 0;
+  async function loadFame(token) {
+    if (!Cloud.ready) return; // Firebase chưa sẵn sàng: giữ "Đang tải...", trang chủ tự vẽ lại khi xong
+    let rows;
+    try { rows = (await Cloud.fetchLeaderboard(Cloud.lbField('week', 'stars'))).slice(0, 3); } catch (e) { rows = null; }
+    const box = document.querySelector('#fame .fame-list');
+    if (token !== fameToken || !box) return; // đã chuyển trang hoặc vẽ lại
+    if (!rows) { document.getElementById('fame').remove(); return; }
+    if (!rows.length) { box.innerHTML = '<p class="fame-empty">🚀 Tuần này chưa có ai lên bảng. <b>Học một bài để là người đầu tiên!</b></p>'; return; }
+    const isMe = r => Cloud.user && Cloud.kid && r.uid === Cloud.user.uid && r.kidId === Cloud.kid.id;
+    box.innerHTML = rows.map((r, i) => `
+      <div class="fame-item fame-${i + 1} ${isMe(r) ? 'me' : ''}">
+        <span class="fame-medal">${['🥇', '🥈', '🥉'][i]}</span>
+        <span class="fame-av">${esc(r.avatar || '🙂')}</span>
+        <span class="fame-name"><b>${esc(r.nickname)}</b>${isMe(r) ? '<span class="rk-tag me">Con</span>' : ''}<small>Lớp ${esc(r.grade || 1)}</small></span>
+        <span class="fame-val"><b>${r[Cloud.lbField('week', 'stars')]}</b> ⭐</span>
+      </div>`).join('');
   }
 
   // ---------------- CHỦ ĐỀ ----------------

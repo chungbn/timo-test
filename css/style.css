@@ -531,3 +531,24 @@ main > .daily:first-child { margin: 0 0 18px; }
 .lbl select { max-width: 200px; }
 .pod-grade { font: 700 12px var(--font); color: var(--muted); }
 .rk-grade { font: 700 12px var(--font); color: var(--muted); margin-left: 6px; }
+
+/* Vinh danh top 3 tuần trên trang chủ */
+.fame { margin: 22px 0 0; padding: 18px 20px; border-radius: 24px; background: linear-gradient(135deg, #fffbeb, #fff7ed); border: 3px solid #fcd34d; box-shadow: var(--shadow); }
+.fame-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 12px; }
+.fame-head h2 { margin: 0; font: 800 24px var(--font-head); }
+.fame-more { margin-left: auto; font-weight: 800; white-space: nowrap; }
+.fame-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.fame-list > p { grid-column: 1 / -1; margin: 0; }
+.fame-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #fff; border-radius: 18px; box-shadow: 0 3px 0 #fde68a; min-width: 0; }
+.fame-1 { box-shadow: 0 3px 0 #f59e0b; background: #fefce8; }
+.fame-item.me { outline: 3px solid #f97316; }
+.fame-medal { font-size: 28px; flex: none; }
+.fame-av { font-size: 34px; flex: none; }
+.fame-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fame-name b { font: 800 18px var(--font-head); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fame-name .rk-tag { margin: 2px 0 0; align-self: flex-start; }
+.fame-name small { color: var(--muted); font-weight: 700; font-size: 12px; }
+.fame-val { white-space: nowrap; color: var(--muted); }
+.fame-val b { font: 800 22px var(--font-head); color: var(--ink); }
+.fame-empty { font-size: 16px; }
+@media (max-width: 760px) { .fame-list { grid-template-columns: 1fr; } .fame-more { margin-left: 0; } }
