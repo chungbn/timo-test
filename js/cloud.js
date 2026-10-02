@@ -63,9 +63,11 @@
     try {
       if (!window.firebase) {
         await loadScript(SDK + 'firebase-app-compat.js');
-        await Promise.all([loadScript(SDK + 'firebase-auth-compat.js'), loadScript(SDK + 'firebase-firestore-compat.js')]);
+        await Promise.all([loadScript(SDK + 'firebase-auth-compat.js'), loadScript(SDK + 'firebase-firestore-compat.js'),
+          cfg.measurementId ? loadScript(SDK + 'firebase-analytics-compat.js').catch(() => { /* bị chặn quảng cáo: bỏ qua */ }) : null]);
       }
       firebase.initializeApp(cfg);
+      if (cfg.measurementId) T.Analytics.init(firebase); else T.Analytics.init({});
       auth = firebase.auth();
       auth.languageCode = 'vi';
       db = firebase.firestore();
@@ -77,9 +79,10 @@
       emitChange();
       return;
     }
-    auth.getRedirectResult().then(r => { if (r && r.user) Cloud.justSignedIn = true; }, e => { Cloud.lastError = errorText(e); emitChange(); });
+    auth.getRedirectResult().then(r => { if (r && r.user) { Cloud.justSignedIn = true; trackAuth(r, 'google'); } }, e => { Cloud.lastError = errorText(e); emitChange(); });
     auth.onAuthStateChanged(async user => {
       Cloud.user = user;
+      T.Analytics.setUserId(user ? user.uid : null);
       // Đang tải dữ liệu phụ huynh (mã PIN, hồ sơ các bé): giao diện chờ, tránh ghi đè lẫn nhau
       Cloud.loading = !!user;
       if (user) emitChange();
@@ -102,6 +105,7 @@
       }
       Cloud.loading = false;
       Cloud.ready = true;
+      T.Analytics.setUser({ account_type: user ? 'parent' : 'guest', kid_profiles: user ? String(Cloud.kids.length) : '0', grade: String(T.grade) });
       emitChange();
     });
 
@@ -111,16 +115,21 @@
   };
 
   // ---------------- đăng nhập ----------------
+  // sign_up khi tài khoản vừa được tạo (cả Google lần đầu), còn lại là login
+  function trackAuth(cred, method) {
+    const isNew = cred && cred.additionalUserInfo && cred.additionalUserInfo.isNewUser;
+    T.Analytics.track(isNew ? 'sign_up' : 'login', { method });
+  }
   Cloud.signInGoogle = async function () {
     const provider = new firebase.auth.GoogleAuthProvider();
-    try { await auth.signInWithPopup(provider); Cloud.justSignedIn = true; }
+    try { trackAuth(await auth.signInWithPopup(provider), 'google'); Cloud.justSignedIn = true; }
     catch (e) {
       if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return auth.signInWithRedirect(provider);
       throw new Error(errorText(e));
     }
   };
-  Cloud.signInEmail = async (email, pass) => { try { await auth.signInWithEmailAndPassword(email, pass); Cloud.justSignedIn = true; } catch (e) { throw new Error(errorText(e)); } };
-  Cloud.signUpEmail = async (email, pass) => { try { await auth.createUserWithEmailAndPassword(email, pass); Cloud.justSignedIn = true; } catch (e) { throw new Error(errorText(e)); } };
+  Cloud.signInEmail = async (email, pass) => { try { trackAuth(await auth.signInWithEmailAndPassword(email, pass), 'email'); Cloud.justSignedIn = true; } catch (e) { throw new Error(errorText(e)); } };
+  Cloud.signUpEmail = async (email, pass) => { try { trackAuth(await auth.createUserWithEmailAndPassword(email, pass), 'email'); Cloud.justSignedIn = true; } catch (e) { throw new Error(errorText(e)); } };
   Cloud.resetPassword = async email => { try { await auth.sendPasswordResetEmail(email); } catch (e) { throw new Error(errorText(e)); } };
   // ---------------- mã PIN phụ huynh ----------------
   // PIN 4 số khóa khu vực phụ huynh để bé không tự xóa dữ liệu. Lưu dạng băm SHA-256 (kèm uid) trong users/{uid}.
@@ -131,6 +140,7 @@
   Cloud.hasPin = () => !!(Cloud.parent && Cloud.parent.pinHash);
   Cloud.checkPin = async pin => Cloud.hasPin() && (await hashPin(pin)) === Cloud.parent.pinHash;
   Cloud.setPin = async function (pin) {
+    T.Analytics.track('parent_pin_set', { first_time: !Cloud.hasPin() });
     const pinHash = await hashPin(pin);
     await db.collection('users').doc(Cloud.user.uid).set({ pinHash, pinUpdatedAt: now() }, { merge: true });
     Cloud.parent = Object.assign({}, Cloud.parent, { pinHash });
@@ -148,6 +158,7 @@
   };
 
   Cloud.signOut = async function () {
+    T.Analytics.track('logout');
     await Cloud.flush();
     localStorage.removeItem(PROFILE_KEY);
     Cloud.justSignedIn = false;
@@ -176,12 +187,15 @@
     Cloud.kid = kid;
     T.setGrade(kid.grade);
     saveProfile(uid, kid);
+    T.Analytics.setUser({ grade: String(T.grade) });
+    T.Analytics.track('kid_profile_select');
     if (migrated) { dirty = true; schedule(800); } // gửi nhật ký vừa bổ sung lên mạng (kèm bảng xếp hạng)
     else writeLeaderboard(kid, Store.data); // cập nhật kỳ tuần/tháng mới
     emitChange();
   };
 
   Cloud.leaveKid = async function () {
+    T.Analytics.track('guest_mode_select');
     await Cloud.flush();
     localStorage.removeItem(PROFILE_KEY);
     useGuest();
@@ -210,12 +224,16 @@
     Cloud.kid = kid;
     T.setGrade(grade);
     saveProfile(Cloud.user.uid, kid);
+    T.Analytics.setUser({ grade: String(grade), kid_profiles: String(Cloud.kids.length) });
+    T.Analytics.track('kid_profile_create', { imported_guest: !!importGuest, kid_profiles: Cloud.kids.length });
     emitChange();
     return ref.id;
   };
 
   Cloud.updateKid = async function (id, { nickname, avatar, grade }) {
     grade = T.validGrade(grade);
+    const before = Cloud.kids.find(x => x.id === id);
+    const oldGrade = before ? T.validGrade(before.grade) : grade;
     await kidRef(id).update({ nickname, avatar, grade, updatedAt: now() });
     await Cloud.refreshKids();
     const k = Cloud.kids.find(x => x.id === id);
@@ -224,12 +242,16 @@
       Object.assign(Cloud.kid, { nickname, avatar, grade });
       T.setGrade(grade);
       saveProfile(Cloud.user.uid, Cloud.kid);
+      T.Analytics.setUser({ grade: String(grade) });
     }
+    T.Analytics.track('kid_profile_update', { grade_changed: oldGrade !== grade });
+    if (oldGrade !== grade) T.Analytics.track('grade_change', { grade, from_grade: oldGrade, source: 'parent' });
     emitChange();
   };
 
   // Xóa toàn bộ tiến độ học tập của một bé (giữ lại hồ sơ)
   Cloud.resetKid = async function (id) {
+    T.Analytics.track('kid_progress_reset');
     if (Cloud.kid && Cloud.kid.id === id) { Store.reset(); dirty = false; }
     else {
       await kidRef(id).update({ progress: progressOf(Store.blank()), updatedAt: now() });
@@ -242,6 +264,7 @@
   };
 
   Cloud.deleteKid = async function (id) {
+    T.Analytics.track('kid_profile_delete');
     const ms = await kidRef(id).collection('mistakes').get();
     const batch = db.batch();
     ms.docs.forEach(d => batch.delete(d.ref));
@@ -355,6 +378,7 @@
   };
   Cloud.lbEntryFor = (kid, d) => lbEntry(kid, d);
   Cloud.setLeaderboard = async function (id, on) {
+    T.Analytics.track('leaderboard_visibility', { visible: on });
     await kidRef(id).update({ onLeaderboard: on, updatedAt: now() });
     const kid = Cloud.kids.find(k => k.id === id);
     if (kid) kid.onLeaderboard = on;

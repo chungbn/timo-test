@@ -21,7 +21,7 @@ Hoặc chạy server tĩnh: `python3 -m http.server 8000` rồi vào http://loca
 - `js/grade2.js` ... `js/grade5.js`: nội dung lớp 2 – 5 (lý thuyết từng chủ đề, dạng bài, lộ trình), đăng ký bằng `T.addGrade(lớp, { topics, gens, lessons })`.
 - `js/topics.js`: lý thuyết và lộ trình lớp 1 (`RAMP`, `LESSONS`), sổ đăng ký lớp (`T.GRADES`, `T.grade`, `T.setGrade`), khóa tiến độ theo lớp, cấu hình đề thi, mức huy chương.
 - `js/app.js`: giao diện và điều hướng. `js/storage.js`: lưu tiến độ vào `localStorage`, gộp dữ liệu giữa các thiết bị.
-- `js/cloud.js`: đăng nhập, hồ sơ bé, đồng bộ Firestore. `js/firebase-config.js`: cấu hình Firebase. `firestore.rules`: quy tắc bảo mật.
+- `js/cloud.js`: đăng nhập, hồ sơ bé, đồng bộ Firestore. `js/analytics.js`: gửi sự kiện Google Analytics. `js/firebase-config.js`: cấu hình Firebase. `firestore.rules`: quy tắc bảo mật.
 
 Thêm dạng bài mới: viết hàm `(R, lv) => mk({ text, answer, solution, ... })` trong file của lớp đó rồi đăng ký vào `gens` (lớp 1: `GENS` trong `generators.js`). Đáp án ô nhập là số tự nhiên (`12500`), số thập phân `"3,5"` (dùng `dec`) hoặc phân số tối giản `"3/4"` (dùng `frac`); lớp 4 – 5 có thêm phím `,` và `/`.
 
@@ -61,6 +61,39 @@ Dữ liệu trên Firestore:
 **Khu vực phụ huynh** (trang Tài khoản) được khóa bằng mã PIN 4 số: báo cáo học tập, thêm/sửa/xóa hồ sơ, **xóa dữ liệu học tập** của từng bé, đổi PIN, đăng xuất. Bé chỉ chọn được hồ sơ để học. PIN được tạo ngay sau khi phụ huynh đăng nhập; quên PIN thì xác nhận lại mật khẩu hoặc tài khoản Google để đặt PIN mới. PIN lưu dạng băm SHA-256 trong `users/{uid}.pinHash`; sai 5 lần sẽ tạm khóa 30 giây; khu vực tự khóa sau 10 phút hoặc khi bé chọn hồ sơ.
 
 Không lưu họ tên, ngày sinh hay thông tin cá nhân của trẻ. Tiến độ được gửi lên khi hết bài, nộp bài thi, đổi hồ sơ hoặc đóng trang (câu trả lời lẻ được gộp sau 20 giây), nên nằm thoải mái trong hạn mức miễn phí.
+
+## Analytics (Google Analytics 4)
+
+`js/analytics.js` gửi sự kiện qua Firebase Analytics (dùng `measurementId` trong `js/firebase-config.js`). Sự kiện bắn trước khi SDK nạp xong được xếp hàng rồi gửi sau; trình chặn quảng cáo chặn SDK thì web vẫn chạy bình thường. Web cho trẻ em nên tắt Google signals và quảng cáo cá nhân hóa, không gửi email hay tên — chỉ gửi uid Firebase (ẩn danh) làm User ID. Mọi sự kiện kèm tham số `grade` (lớp đang học).
+
+| Sự kiện | Khi nào | Tham số chính |
+|---|---|---|
+| `page_view` (tự động), `screen_view` | Mở web; mỗi lần đổi trang | `firebase_screen` (vd `topic/geo`, `exam/full`) |
+| `lesson_start`, **`lesson_complete`** | Bắt đầu / làm xong một bài trong lộ trình | `topic`, `lesson`, `lesson_name`, `correct`, `total`, `score`, `stars`, `first_time`, `improved`, `duration_sec` |
+| `practice_start`, `practice_complete` | Luyện tổng hợp, ôn câu sai | `session_type` (`mixed` / `mistakes`), `correct`, `score` |
+| `daily_challenge_start`, **`daily_challenge_complete`** | Thử thách hôm nay | `correct`, `bonus_earned` |
+| `answer_question` | Mỗi câu trả lời khi luyện | `topic`, `level`, `form` (dạng bài), `correct`, `question_number`, `question_grade` |
+| `exam_start`, **`exam_complete`**, `exam_abandon`, `exam_flag_question` | Thi thử | `exam_mode`, `exam_no`, `score`, `correct`, `medal`, `answered`, `auto_submit`, `new_best`, `duration_sec` |
+| `post_score` | Nộp bài thi | `score`, `level` (loại đề) |
+| `speed_start`, `speed_complete` | Tính nhẩm 60 giây | `score`, `wrong`, `new_record` |
+| `earn_virtual_currency` | Nhận thêm sao | `virtual_currency_name: star`, `value`, `source` (`lesson` / `daily_challenge`) |
+| `unlock_achievement` | 3 sao lần đầu, huy chương vàng, kỷ lục tính nhẩm | `achievement_id` (`lesson_3_stars` / `exam_gold` / `speed_record`) |
+| `leaderboard_view`, `leaderboard_filter` | Xem / đổi bảng xếp hạng | `period`, `metric`, `rank` |
+| `grade_change` | Đổi lớp | `grade`, `from_grade`, `source` (`guest` / `parent`) |
+| **`sign_up`**, `login`, `logout` | Tài khoản phụ huynh | `method` (`google` / `email`) |
+| **`kid_profile_create`**, `kid_profile_update`, `kid_profile_select`, `kid_profile_delete`, `kid_progress_reset`, `guest_mode_select` | Hồ sơ bé | `imported_guest`, `grade_changed` |
+| `parent_area_unlock`, `parent_pin_set`, `parent_pin_fail`, `leaderboard_visibility` | Khu vực phụ huynh | `visible`, `tries` |
+| `tts_play`, `mistakes_clear`, `data_reset` | Đọc đề / lời giải, sổ tay lỗi sai, xóa dữ liệu | `content` (`question` / `solution`) |
+
+Thuộc tính người dùng: `grade`, `account_type` (`guest` / `parent`), `kid_profiles`.
+
+**Key Events** (in đậm ở trên, danh sách `T.Analytics.KEY_EVENTS`): `lesson_complete`, `exam_complete`, `daily_challenge_complete`, `sign_up`, `kid_profile_create`. Tạo bằng script (kèm custom dimensions/metrics để xem tham số trong báo cáo):
+
+```
+ACCESS_TOKEN=<token có scope analytics.edit> PROPERTY_ID=<mã property GA4> node scripts/create-key-events.js
+```
+
+Hoặc làm tay: GA4 → Admin → Data display → Key events → New key event, nhập tên sự kiện. Xem sự kiện theo thời gian thực ở Admin → DebugView (mở web với tiện ích *Google Analytics Debugger*) hoặc Reports → Realtime.
 
 ## Triển khai lên Firebase Hosting
 

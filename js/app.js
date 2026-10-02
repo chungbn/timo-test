@@ -2,6 +2,7 @@
   'use strict';
   const $app = document.getElementById('app');
   const { esc, Store, TOPICS, topicById } = T;
+  const track = (name, params) => T.Analytics.track(name, params);
 
   let session = null;   // phiên luyện tập
   let exam = null;      // bài thi đang làm
@@ -234,8 +235,13 @@ ${todayDone ? dailyCard : ''}
   }
 
   // ---------------- PHIÊN LUYỆN TẬP ----------------
+  // Thông số chung của phiên luyện cho Analytics: loại phiên (lesson / mixed / daily / mistakes), chủ đề, bài
+  const sessionParams = s => ({ session_type: s.mode || (s.lesson ? 'lesson' : 'mixed'), topic: s.topic, lesson: s.lesson, lesson_name: s.lessonName });
+
   function startSession(cfg) {
-    session = Object.assign({}, cfg, { cfg, idx: 0, correct: 0, results: [], saved: false, questions: cfg.make() });
+    session = Object.assign({}, cfg, { cfg, idx: 0, correct: 0, results: [], saved: false, questions: cfg.make(), startedAt: Date.now() });
+    const p = sessionParams(session);
+    track(session.lesson ? 'lesson_start' : session.mode === 'daily' ? 'daily_challenge_start' : 'practice_start', p);
     renderSession();
   }
 
@@ -267,6 +273,7 @@ ${todayDone ? dailyCard : ''}
     if (ok) s.correct++;
     s.results.push({ q, v, ok });
     Store.recordAnswer(T.statKey(q.topic, q.grade || 1), ok);
+    track('answer_question', { session_type: sessionParams(s).session_type, topic: q.topic, level: q.lv, form: q.gen, question_grade: q.grade || 1, correct: ok, question_number: s.idx + 1 });
     if (!ok) Store.addMistake(q);
     else if (s.mode === 'mistakes') Store.removeMistake(q);
 
@@ -292,9 +299,19 @@ ${todayDone ? dailyCard : ''}
     const stars = r >= 0.9 ? 3 : r >= 0.7 ? 2 : r >= 0.5 ? 1 : 0;
     if (!s.saved) {
       s.saved = true;
+      const before = s.starKey ? Store.stars(s.starKey) : 0;
       if (s.starKey) Store.setStars(s.starKey, stars);
       if (s.onDone) s.onDone(s);
       if (stars === 3 || s.bonus) confetti();
+      const p = Object.assign(sessionParams(s), { correct: s.correct, total: n, score: Math.round(r * 100), stars, duration_sec: Math.round((Date.now() - s.startedAt) / 1000) });
+      if (s.lesson) {
+        track('lesson_complete', Object.assign(p, { first_time: !before, improved: stars > before }));
+        if (stars > before) track('earn_virtual_currency', { virtual_currency_name: 'star', value: stars - before, source: 'lesson' });
+        if (stars === 3 && before < 3) track('unlock_achievement', { achievement_id: 'lesson_3_stars', topic: s.topic, lesson: s.lesson });
+      } else if (s.mode === 'daily') {
+        track('daily_challenge_complete', Object.assign(p, { bonus_earned: !!s.bonus }));
+        if (s.bonus) track('earn_virtual_currency', { virtual_currency_name: 'star', value: T.DAILY_BONUS, source: 'daily_challenge' });
+      } else track('practice_complete', p);
     }
     const next = s.lesson && s.lesson < T.LESSON_COUNT ? `#/practice/${s.topic}/${s.lesson + 1}` : null;
     const msg = stars === 3 ? 'Tuyệt vời! Con là nhà toán học nhí! 🏆' : stars === 2 ? 'Rất tốt! Cố thêm chút nữa để được 3 sao nhé! 🌟' : stars === 1 ? 'Khá lắm! Xem lại lời giải và thử lần nữa nhé! 💪' : 'Không sao cả! Đọc lại phần kiến thức rồi luyện tiếp nhé! 📖';
@@ -463,6 +480,14 @@ ${todayDone ? dailyCard : ''}
     e.correct = e.res.filter(Boolean).length;
     e.score = Math.round(e.correct * 100 / e.qs.length);
     e.qs.forEach((q, i) => { Store.recordAnswer(T.statKey(q.topic, e.grade), e.res[i]); if (!e.res[i]) Store.addMistake(q); });
+    const prevBest = e.no !== 'r' ? Store.best(e.key) : null, medal = T.medal(e.score);
+    track('exam_complete', {
+      exam_mode: e.mode, exam_no: e.no === 'r' ? 'random' : String(e.no), score: e.score, correct: e.correct, total: e.qs.length,
+      answered: e.answers.filter(a => String(a).trim()).length, medal: medal.cls, auto_submit: !!auto, duration_sec: e.usedSec,
+      new_best: prevBest == null || e.score > prevBest,
+    });
+    track('post_score', { score: e.score, level: e.mode });
+    if (medal.cls === 'gold') track('unlock_achievement', { achievement_id: 'exam_gold', exam_mode: e.mode });
     Store.addExam({ key: e.key, title: e.title, score: e.score, correct: e.correct, n: e.qs.length, usedSec: e.usedSec, date: Date.now() });
     renderExamResult();
     if (auto) alert('⏰ Hết giờ! Bài làm đã được nộp.');
@@ -552,6 +577,8 @@ ${todayDone ? dailyCard : ''}
     clearTimers();
     const rec = Store.setSpeed(speed.score);
     if (rec && speed.score > 0) confetti();
+    track('speed_complete', { score: speed.score, wrong: speed.wrong, new_record: rec && speed.score > 0 });
+    if (rec && speed.score > 0) track('unlock_achievement', { achievement_id: 'speed_record', score: speed.score });
     $app.innerHTML = `
     <div class="result-card">
       <div class="ico big">⚡</div>
@@ -683,8 +710,9 @@ ${todayDone ? dailyCard : ''}
       acct.busy = true; renderAccount();
       const ok = await Cloud.checkPin(pin);
       acct.busy = false;
-      if (ok) { acct.pinTries = 0; unlock(); afterUnlock(); return; }
+      if (ok) { acct.pinTries = 0; unlock(); track('parent_area_unlock', { method: 'pin' }); afterUnlock(); return; }
       acct.pinTries++;
+      track('parent_pin_fail', { tries: acct.pinTries });
       if (acct.pinTries >= 5) { acct.pinTries = 0; acct.pinLockUntil = Date.now() + 30000; acct.err = 'Sai mã PIN 5 lần. Vui lòng đợi 30 giây rồi thử lại.'; }
       else acct.err = 'Mã PIN không đúng.';
       renderAccount();
@@ -988,6 +1016,8 @@ ${todayDone ? dailyCard : ''}
     try { await Cloud.flush(); rows = await Cloud.fetchLeaderboard(field); } catch (e) { err = e.message; }
     const box = document.getElementById('lb-list');
     if (token !== lbToken || !box) return; // người dùng đã chuyển tab
+    const myRank = rows && Cloud.kid ? rows.findIndex(r => Cloud.user && r.uid === Cloud.user.uid && r.kidId === Cloud.kid.id) + 1 : 0;
+    track('leaderboard_view', { period, metric, rank: myRank || undefined, error: err ? 1 : undefined });
     if (err) { box.innerHTML = `<div class="rank-empty"><div class="big-ico">⚠️</div><p>${esc(err)}</p></div>`; return; }
     const mine = r => Cloud.user && r.uid === Cloud.user.uid;
     const cur = r => Cloud.kid && mine(r) && r.kidId === Cloud.kid.id;
@@ -1042,6 +1072,8 @@ ${todayDone ? dailyCard : ''}
   });
 
   // ---------------- ĐIỀU HƯỚNG ----------------
+  // Lần mở web GA tự gửi page_view; các lần đổi trang sau gửi screen_view (vẽ lại cùng trang thì không gửi)
+  let lastScreen = null;
   function route() {
     clearTimers();
     speed = null;
@@ -1050,11 +1082,14 @@ ${todayDone ? dailyCard : ''}
     const [a, b, c] = p;
     document.body.dataset.view = a || 'home';
     updateBrand();
+    const screen = ['topic', 'practice', 'exam'].includes(a) && b ? `${a}/${b}` : a || 'home';
+    if (lastScreen && location.hash !== lastScreen.hash) T.Analytics.screen(screen, a || 'home');
+    lastScreen = { hash: location.hash };
     if (!a) renderHome();
     else if (a === 'topic') renderTopic(b);
     else if (a === 'practice' && topicById(b) && +c >= 1 && +c <= T.LESSON_COUNT) {
       const t = topicById(b), n = +c, L = T.lessons(b)[n - 1];
-      startSession({ title: `${t.icon} Lớp ${T.grade} · Bài ${n}: ${L.t}`, back: `#/topic/${b}`, topic: b, lesson: n, starKey: T.lessonKey(b, n), make: () => T.generateLesson(b, n) });
+      startSession({ title: `${t.icon} Lớp ${T.grade} · Bài ${n}: ${L.t}`, back: `#/topic/${b}`, topic: b, lesson: n, lessonName: L.t, starKey: T.lessonKey(b, n), make: () => T.generateLesson(b, n) });
     } else if (a === 'mixed') {
       startSession({ title: '🎯 Luyện tổng hợp', back: '#/', make: () => mixedQuestions(T.makeRng(), 10) });
     } else if (a === 'daily') {
@@ -1082,6 +1117,7 @@ ${todayDone ? dailyCard : ''}
         history.replaceState(null, '', lastHash || '#/');
         return;
       }
+      track('exam_abandon', { exam_mode: exam.mode, answered: exam.answers.filter(a => String(a).trim()).length, elapsed_sec: Math.round((Date.now() - exam.startAt) / 1000) });
       exam = null;
     }
     lastHash = location.hash;
@@ -1100,16 +1136,18 @@ ${todayDone ? dailyCard : ''}
     if (act === 'lb-period' || act === 'lb-metric') {
       lbView[act === 'lb-period' ? 'period' : 'metric'] = el.dataset.k;
       if (lbView.period !== 'all' && LB_METRICS[lbView.metric].allOnly) lbView.metric = 'stars';
+      track('leaderboard_filter', { period: lbView.period, metric: lbView.metric });
       try { localStorage.setItem('timo1-lb', JSON.stringify(lbView)); } catch (e) { /* bỏ qua */ }
       renderRank();
       return;
     }
     switch (act) {
-      case 'tts': speak(currentQ); break;
+      case 'tts': speak(currentQ); track('tts_play', { content: 'question', topic: currentQ && currentQ.topic }); break;
       case 'tts-sol': {
         const box = el.closest('.solution').cloneNode(true);
         box.querySelectorAll('button').forEach(b => b.remove());
         speakText('Lời giải. ' + toSpeech(box.innerHTML), 'sol:' + box.innerHTML);
+        track('tts_play', { content: 'solution' });
         break;
       }
       case 'kp': {
@@ -1132,11 +1170,12 @@ ${todayDone ? dailyCard : ''}
       case 'restart': startSession(session.cfg); break;
       case 'ex-start':
         exam.started = true; exam.startAt = Date.now(); exam.endAt = exam.startAt + exam.M.minutes * 60000;
+        track('exam_start', { exam_mode: exam.mode, exam_no: exam.no === 'r' ? 'random' : String(exam.no), retry: Store.best(exam.key) != null });
         renderExam(); startExamTimer(); break;
       case 'ex-prev': examGo(exam.idx - 1); break;
       case 'ex-next': exam.idx + 1 < exam.qs.length ? examGo(exam.idx + 1) : submitExam(false); break;
       case 'ex-go': examGo(+el.dataset.i); break;
-      case 'ex-flag': exam.flags[exam.idx] = !exam.flags[exam.idx]; renderExam(); break;
+      case 'ex-flag': exam.flags[exam.idx] = !exam.flags[exam.idx]; if (exam.flags[exam.idx]) track('exam_flag_question', { exam_mode: exam.mode }); renderExam(); break;
       case 'ex-submit': submitExam(false); break;
       case 'ex-retry': exam = buildExam(exam.mode, exam.no); renderExamIntro(); break;
       case 'ex-new': {
@@ -1150,6 +1189,7 @@ ${todayDone ? dailyCard : ''}
         break;
       }
       case 'sp-start':
+        track('speed_start');
         speed = { score: 0, wrong: 0, endAt: Date.now() + 60000, q: speedQuestion(0) };
         renderSpeed();
         timers.push(setInterval(() => {
@@ -1165,8 +1205,8 @@ ${todayDone ? dailyCard : ''}
         startSession({ title: '📒 Ôn lại câu sai', back: '#/mistakes', mode: 'mistakes', make: () => T.makeRng().shuffle(qs) });
         break;
       }
-      case 'mk-clear': if (confirm('Xóa hết các câu trong sổ tay lỗi sai?')) { Store.clearMistakes(); renderMistakes(); } break;
-      case 'reset': if (confirm(`Xóa toàn bộ sao, điểm thi và thống kê${Cloud.kid ? ` của ${Cloud.kid.nickname} (cả trên mạng)` : ''}? Không thể khôi phục.`)) { Store.reset(); renderProgress(); } break;
+      case 'mk-clear': if (confirm('Xóa hết các câu trong sổ tay lỗi sai?')) { track('mistakes_clear', { count: Store.data.mistakes.length }); Store.clearMistakes(); renderMistakes(); } break;
+      case 'reset': if (confirm(`Xóa toàn bộ sao, điểm thi và thống kê${Cloud.kid ? ` của ${Cloud.kid.nickname} (cả trên mạng)` : ''}? Không thể khôi phục.`)) { track('data_reset'); Store.reset(); renderProgress(); } break;
     }
   });
 
@@ -1179,6 +1219,8 @@ ${todayDone ? dailyCard : ''}
 
   $app.addEventListener('change', ev => {
     if (ev.target.id !== 'guest-grade' || Cloud.kid) return;
+    track('grade_change', { grade: +ev.target.value, from_grade: T.grade, source: 'guest' });
+    T.Analytics.setUser({ grade: String(T.validGrade(ev.target.value)) });
     T.setGuestGrade(ev.target.value);
     T.setGrade(ev.target.value);
     exam = null;
